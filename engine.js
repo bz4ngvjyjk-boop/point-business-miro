@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=34';
+} from './config.js?v=35';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -870,10 +870,16 @@ function suiviCourant(manuel, action) {
   }
   return `${action.texte} (${String(ja).padStart(2, '0')}/${String(ma).padStart(2, '0')})`;
 }
-function lireJcrm(items) {
+// Données jCRM déposées par le script (texte « PBH-JCRM ») : lues, gardées dans les données de l'app,
+// puis le texte est supprimé du board (il ne sert que de boîte aux lettres).
+async function lireJcrm(items) {
   const t = items.find((x) => x.item.type === 'text' && (x.item.content || '').includes('PBH-JCRM'));
-  if (!t) return { data: new Map(), maj: null };
-  const brut = t.item.content.replace(/<[^>]+>/g, ' ');
+  let brut;
+  if (t) {
+    brut = t.item.content.replace(/<[^>]+>/g, ' ');
+    try { await board().setAppData('jcrm', brut); await remove(t.item); } catch (e) { console.warn('PBH-JCRM', e); }
+  } else brut = await board().getAppData('jcrm').catch(() => null);
+  if (!brut) return { data: new Map(), maj: null };
   const maj = (/maj (\d{2}\/\d{2} \d{2}:\d{2})/.exec(brut) || [])[1] || null;
   const data = new Map();
   for (const m of brut.matchAll(/(\d+):([\d.]*):([A-Z?]):(\d{4}-\d{2}-\d{2})?(?::(\d{4}-\d{2})?)?(?::(\d{4}-\d{2}-\d{2})?:([^;\s<]*))?/g)) {
@@ -895,7 +901,7 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
       x: f3.x + f3.width / 2 + 200 + W / 2, y: top1 + H / 2 });
   }
   const dans = vivants.filter((x) => inFrame(f, x.item));
-  const { data: jcrm, maj } = lireJcrm(snap.items.filter((x) => inFrame(f, x.item)));
+  const { data: jcrm, maj } = await lireJcrm(snap.items.filter((x) => inFrame(f, x.item)));
 
   // dossiers du tableau, par trimestre visé (un trimestre passé glisse dans le trimestre en cours)
   const blocs = quarts.map(() => []);
