@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM, PART_SCENARIOS,
-} from './config.js?v=23';
+} from './config.js?v=24';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -318,6 +318,32 @@ async function boiteMobile(snap, f1) {
   return n;
 }
 
+
+// ══ REPRISE PONCTUELLE (tableau de chasse) ══
+// Un texte « PBH-REPRISE: [...] » déposé sur le board (par script) est appliqué une fois :
+// chaque entrée { t: titre exact, j: n° jCRM, q: trimestre visé, s: suivi daté, a: date d'ajout }
+// coche « tableau de chasse » sur la fiche correspondante, puis le texte est supprimé.
+function decodeHtml(h) { const ta = document.createElement('textarea'); ta.innerHTML = h; return ta.value; }
+async function appliquerReprise(snap) {
+  const t = snap.items.find((x) => x.item.type === 'text' && (x.item.content || '').includes('PBH-REPRISE'));
+  if (!t) return 0;
+  let liste;
+  try { liste = JSON.parse(decodeHtml(t.item.content.replace(/<[^>]+>/g, '')).split('PBH-REPRISE:')[1].trim()); }
+  catch (e) { console.warn('Reprise illisible', e); return 0; }
+  const parTitre = new Map(snap.items.filter((x) => x.meta?.role === 'dossier').map((x) => [x.meta.titre, x]));
+  let n = 0;
+  for (const e of liste) {
+    const d = parTitre.get(e.t);
+    if (!d) { console.warn('Reprise : dossier introuvable', e.t); continue; }
+    const m = { ...d.meta, chasse: true, chasseTrim: e.q, chasseLe: d.meta.chasseLe || e.a, jcrm: e.j,
+      suivi: d.meta.suivi || e.s || null, maj: new Date().toISOString() };
+    await setMeta(d.item, m);
+    n++;
+  }
+  await board().remove(t.item).catch(() => {});
+  return n;
+}
+
 // ══ RANGEMENT GÉNÉRAL ══
 // Un seul rangement à la fois : une demande arrivée pendant un rangement est rejouée juste après.
 let enCours = null;
@@ -332,6 +358,7 @@ async function layoutInterne({ pilotes = null } = {}) {
   const f1 = findFrame(snap.frames, 'Avancement avant-vente');
   if (!f1) return null;
   // post-its de la boîte mobile : intégrés avant le rangement (rangement complet s'il y en a)
+  try { if (await appliquerReprise(snap)) snap = await snapshot(); } catch (e) { console.warn('Reprise', e); }
   let mobiles = 0;
   const BOITE_MOBILE_ACTIVE = false;   // saisie mobile abandonnée (décision 11/10) : code conservé, désactivé
   if (BOITE_MOBILE_ACTIVE && !pilotes) {
@@ -626,7 +653,7 @@ export async function tachesAV(av) {
   const list = [];
   for (const d of snap.items.filter((x) => x.meta?.role === 'dossier')) {
     for (const t of tachesDe(d.meta)) {
-      if (t.ressource !== av || !(LIVRABLES_PLAN.includes(t.livrable) || LIVRABLES_DEVIS.includes(t.livrable))) continue;
+      if (t.ressource !== av) continue;
       const key = cleTache(d.item.id, av, t.livrable);
       const rAuto = horizon(t);
       list.push({ d, t, key, rAuto, r: forcees.has(key) ? forcees.get(key) : rAuto });
@@ -653,7 +680,8 @@ export async function enregistrerOrdreAV(av, cles) {
 }
 
 async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
-  let f = findFrame(snap.frames, 'Charge plans');
+  let f = findFrame(snap.frames, 'Charge');
+  if (f && f.title !== ZONE3_TITLE) { f.title = ZONE3_TITLE; await f.sync().catch(() => {}); }
   if (!f) {
     f = await board().createFrame({ title: ZONE3_TITLE, width: G.frameW, height: H, style: { fillColor: '#ffffff' },
       x: f2.x + f2.width / 2 + 200 + G.frameW / 2, y: top1 + H / 2 });
@@ -690,15 +718,16 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
   // cartes cibles : un reflet par (dossier, avant-vente) qui attend un plan et/ou un devis
   const cibles = [];
   const forceesParAV = Object.fromEntries(await Promise.all(RESSOURCES.map(async (a) => [a, await lignesForcees(a)])));
-  const compte = Object.fromEntries(RESSOURCES.map((a) => [a, { plans: 0, devis: 0 }]));
+  const compte = Object.fromEntries(RESSOURCES.map((a) => [a, { plans: 0, devis: 0, actions: 0 }]));
   for (const d of dossiers) {
     for (const t of tachesDe(d.meta)) {
       const av = t.ressource;
-      if (!RESSOURCES.includes(av) || !(LIVRABLES_PLAN.includes(t.livrable) || LIVRABLES_DEVIS.includes(t.livrable))) continue;
+      if (!RESSOURCES.includes(av)) continue;                // toute action d'une ressource avant-vente
       const k0 = cleTache(d.item.id, av, t.livrable);
       const r = forceesParAV[av].has(k0) ? forceesParAV[av].get(k0) : horizon(t);   // ligne forcée à la main
       if (r >= NH) continue;                         // au-delà de S+1 : pas affiché
       cibles.push({ d, t, av, r, livr: [t.livrable], key: cleTache(d.item.id, av, t.livrable) });
+      compte[av].actions++;
       if (LIVRABLES_PLAN.includes(t.livrable)) compte[av].plans++;
       if (LIVRABLES_DEVIS.includes(t.livrable)) compte[av].devis++;
     }
@@ -709,7 +738,7 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
     const m = c.d.meta;
     const fields = [...(c.t.fait ? [{ value: '✓ Fait', fillColor: '#1e8e4e', textColor: '#ffffff' }] : []),
       { value: m.pilote, fillColor: BLEU, textColor: '#ffffff' },
-      ...c.livr.map((l) => ({ value: l, fillColor: '#e3f4d6', textColor: '#245c12' }))];
+      ...c.livr.filter(Boolean).map((l) => ({ value: l, fillColor: '#e3f4d6', textColor: '#245c12' }))];
     const a = alerte(c.t.echeance);
     if (a) fields.push(a);
     const ech = c.t.echeance ? ` · éch. ${c.t.echeance.slice(8, 10)}/${c.t.echeance.slice(5, 7)}` : '';
@@ -740,7 +769,7 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
     if (m.role === 'hdr3') {
       const j = RESSOURCES.indexOf(m.av), k = compte[m.av];
       push(update(x.item, f, colX(j) + colW / 2, G3.top - G.hdrH / 2 - 8, { width: colW, height: G.hdrH,
-        content: `<p><strong>${m.av}</strong> · ${k.plans} plan${k.plans > 1 ? 's' : ''} · ${k.devis} devis</p>` }));
+        content: `<p><strong>${m.av}</strong> · ${k.actions} action${k.actions > 1 ? 's' : ''} (${k.plans} plan${k.plans > 1 ? 's' : ''} · ${k.devis} devis)</p>` }));
     }
     if (m.role === 'lab3') push(update(x.item, f, G.margin + G3.labelW / 2, rowY(m.r) + rowH / 2, { width: G3.labelW, height: rowH,
       content: `<p><strong>${HORIZONS[m.r]}</strong></p>` }));
@@ -825,7 +854,11 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
   for (const d of dossiers.filter((x) => x.meta.chasse)) {
     let k = quarts.indexOf(d.meta.chasseTrim || quarts[0]);
     let glisse = null;
-    if (k < 0 && rangTrim(d.meta.chasseTrim) < rangTrim(quarts[0])) { k = 0; glisse = d.meta.chasseTrim; }
+    const j0 = d.meta.jcrm ? jcrm.get(String(d.meta.jcrm)) : null;
+    if (j0?.statut === 'G' && j0.signeLe) {                 // signée : rangée dans le trimestre de signature
+      k = quarts.indexOf(trimestreDe(new Date(j0.signeLe)));
+      if (k < 0) continue;                                   // signée sur un trimestre passé : hors tableau
+    } else if (k < 0 && rangTrim(d.meta.chasseTrim) < rangTrim(quarts[0])) { k = 0; glisse = d.meta.chasseTrim; }
     if (k < 0) continue;
     blocs[k].push({ d, glisse, j: d.meta.jcrm ? jcrm.get(String(d.meta.jcrm)) : null });
   }
