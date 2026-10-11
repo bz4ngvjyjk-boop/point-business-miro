@@ -24,7 +24,7 @@ export const ENJEUX = [
 
 export const PRIORITES = ['P1', 'P2', 'P3', 'Autres', '—'];
 export const RESSOURCES = ['AG', 'OP', 'PS', 'JAB', 'FS'];
-export const LIVRABLES = ['plan', 'devis', 'plan + devis', 'esquisse', "Réponse appel d'offre",
+export const LIVRABLES = ['plan', 'devis', 'plan + devis', 'esquisse', 'Réponse AO',
   'enveloppe', 'CDC', 'RDV', 'BERCHER', 'Retrofit', 'Plan action', 'étude', 'relance',
   'manque infos commercial'];
 

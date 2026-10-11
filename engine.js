@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=42';
+} from './config.js?v=43';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -28,8 +28,11 @@ function tronque(t, budget) {
 
 // ── Tâches avant-vente : [{ ressource, livrable, priorite, echeance }] ──
 // Les anciennes fiches (ressource[] + livrables[] + echeance) sont converties à la lecture.
+// Libellés renommés : les fiches existantes sont lues avec le nouveau nom (réécrit au prochain enregistrement)
+const RENOMME = { "Réponse appel d'offre": 'Réponse AO' };
+const renomme = (t) => (RENOMME[t.livrable] ? { ...t, livrable: RENOMME[t.livrable] } : t);
 export function tachesDe(m) {
-  if (Array.isArray(m.taches)) return m.taches;
+  if (Array.isArray(m.taches)) return m.taches.map(renomme);
   const L = m.livrables || [];
   const liv = L.includes('plan + devis') || (L.includes('plan') && L.includes('devis')) ? 'plan + devis'
     : L.includes('plan') ? 'plan' : L.includes('devis') ? 'devis' : (L[0] || '');
@@ -236,7 +239,7 @@ const ENJEU_MOTS = { s: 'S', strat: 'S', strategique: 'S', e1: 'E1', e2: 'E2', e
   closing: 'C', c: 'C', signe: 'G', g: 'G' };
 const LIV_MOTS = [
   [/plan\s*\+\s*devis/, 'plan + devis'], [/plan\s*action/, 'Plan action'], [/\bplan\b/, 'plan'], [/\bdevis\b/, 'devis'],
-  [/esquisse/, 'esquisse'], [/\bao\b|appel d.offre/, "Réponse appel d'offre"], [/enveloppe/, 'enveloppe'], [/\bcdc\b/, 'CDC'],
+  [/esquisse/, 'esquisse'], [/\bao\b|appel d.offre/, 'Réponse AO'], [/enveloppe/, 'enveloppe'], [/\bcdc\b/, 'CDC'],
   [/\brdv\b/, 'RDV'], [/bercher/, 'BERCHER'], [/retrofit/, 'Retrofit'], [/etude/, 'étude'], [/relance/, 'relance'],
 ];
 const sansAccent = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -772,7 +775,9 @@ function horizon(t) {
 
 // Ordre manuel par avant-vente (enregistré sur le board) : liste de clés de tâches
 const cleTache = (dossierId, av, livrable) => `${dossierId}|${av}|${livrable}`;
-async function ordreBrut(av) { return (await board().getAppData(`ordre_${av}`).catch(() => null)) || []; }
+const renommeCle = (c) => (typeof c === 'string' ? c.replace("Réponse appel d'offre", 'Réponse AO')
+  : c && c.key ? { ...c, key: c.key.replace("Réponse appel d'offre", 'Réponse AO') } : c);
+async function ordreBrut(av) { return ((await board().getAppData(`ordre_${av}`).catch(() => null)) || []).map(renommeCle); }
 // clés dans l'ordre manuel (les entrées peuvent être des chaînes ou des objets { key, r })
 async function ordreManuel(av) { return (await ordreBrut(av)).map((e) => (typeof e === 'string' ? e : e.key)); }
 // lignes forcées à la main : clé -> 0 / 1 / 2
