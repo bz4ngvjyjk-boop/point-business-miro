@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=26';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, trimestresAffiches } from './engine.js?v=26';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=27';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, trimestresAffiches } from './engine.js?v=27';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -80,6 +80,11 @@ function suiviDate() {
 function fill(d, id) {
   currentId = id || null;
   $('chasse').checked = !!d?.chasse;
+  // trimestre visé : toujours proposé, même s'il est passé (sinon il serait effacé à l'enregistrement)
+  [...$('chasseTrim').querySelectorAll('option.passe')].forEach((o) => o.remove());
+  if (d?.chasseTrim && ![...$('chasseTrim').options].some((o) => o.value === d.chasseTrim)) {
+    $('chasseTrim').insertAdjacentHTML('afterbegin', `<option class="passe" value="${d.chasseTrim}">${d.chasseTrim} (passé)</option>`);
+  }
   if (d?.chasseTrim) $('chasseTrim').value = d.chasseTrim; else $('chasseTrim').selectedIndex = 0;
   $('jcrm').value = d?.jcrm || '';
   suiviInitial = d?.suivi || '';

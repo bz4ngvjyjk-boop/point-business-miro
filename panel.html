@@ -7,6 +7,8 @@
   <style>
     :root { --bleu:#002060; --or:#FDB913; --ink:#1a1a1a; --mut:#5b6478; --line:#cfd5e2; --soft:#f4f6fa; }
     * { box-sizing:border-box; }
+    html, body { height:100%; }
+    body { overflow-y:auto; -webkit-overflow-scrolling:touch; }   /* défilement du panneau */
     [hidden] { display:none !important; }
     body { margin:0; padding:14px; font:13px/1.4 "Open Sans","Segoe UI",Arial,sans-serif; color:var(--ink); }
     h1 { font-size:18px; color:var(--bleu); margin:0 0 2px; }
@@ -51,7 +53,7 @@
   </style>
 </head>
 <body>
-  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v26</div>
+  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v27</div>
   <div id="vueOrdre" hidden>
     <h1 id="ordreTtl">Ordre de traitement</h1>
     <div class="sub">Flèches pour changer l'ordre, puis « Enregistrer l'ordre ». La zone 3 suit cet ordre dans chaque case.</div>
@@ -115,6 +117,6 @@
   </div>
 
   </div>
-  <script type="module" src="panel.js?v=26"></script>
+  <script type="module" src="panel.js?v=27"></script>
 </body>
 </html>
