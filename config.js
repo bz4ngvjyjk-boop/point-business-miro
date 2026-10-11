@@ -51,7 +51,7 @@ export const LIVRABLES_PLAN = ['plan', 'plan + devis', 'esquisse'];
 export const LIVRABLES_DEVIS = ['devis', 'plan + devis'];
 export const G3 = { labelW: 160, colGap: 20, rowGap: 16, cardW: 260, cardPad: 12, rowStep: 76, gap: 8, top: 150, titreMax: 22 };
 export const ZONE4_TITLE = '4 · Tableau de chasse';
-export const G4 = { colGap: 30, cardW: 320, cardPad: 12, gap: 8, top: 150, titreMax: 26 };
+export const G4 = { cols: [560, 110, 1100, 170], ligneH: 44, enteteH: 40, bandeauH: 84, blocGap: 70, top: 110 };   // tableau façon slide CODIR
 // Objectif de signatures par trimestre (k€) : 2026 = 10 M€/an, 2027 = 11 M€/an (COCOM / CODIR)
 export const OBJECTIF_TRIM = { 2026: 2500, 2027: 2750, 2028: 2750 };
 export const PART_SCENARIOS = [0.6, 0.9];   // scénarios négatif / positif sur le reste à signer

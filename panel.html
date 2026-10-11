@@ -51,7 +51,7 @@
   </style>
 </head>
 <body>
-  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v22</div>
+  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v23</div>
   <div id="vueOrdre" hidden>
     <h1 id="ordreTtl">Ordre de traitement</h1>
     <div class="sub">Flèches pour changer l'ordre, puis « Enregistrer l'ordre ». La zone 3 suit cet ordre dans chaque case.</div>
@@ -86,6 +86,7 @@
       <select id="chasseTrim" style="flex:1;border:1px solid var(--line);border-radius:4px;padding:5px;font:inherit"></select>
       <input type="number" id="jcrm" placeholder="n° jCRM" style="flex:1;border:1px solid var(--line);border-radius:4px;padding:5px;font:inherit">
     </div>
+    <input type="text" id="suivi" placeholder="Suivi / échéance annoncée (ex. Go de principe, attente banque)" style="width:100%;margin-top:6px;border:1px solid var(--line);border-radius:4px;padding:6px;font:inherit;font-size:12px">
     <div class="sub" id="chasseInfo" style="margin:4px 0 0"></div>
   </div>
   <div class="chk"><input type="checkbox" id="carsat"><label for="carsat" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)">Dossier CARSAT</label></div>
@@ -114,6 +115,6 @@
   </div>
 
   </div>
-  <script type="module" src="panel.js?v=22"></script>
+  <script type="module" src="panel.js?v=23"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=22';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, trimestresAffiches } from './engine.js?v=22';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=23';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, trimestresAffiches } from './engine.js?v=23';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -67,13 +67,23 @@ function status(msg, err = false) {
   for (let i = 0; i < 4; i++) { opts.push(`T${t} ${a}`); t++; if (t > 4) { t = 1; a++; } }
   $('chasseTrim').innerHTML = opts.map((q) => `<option>${q}</option>`).join('');
 })();
-let chasseLe = null;
+let chasseLe = null, suiviInitial = '';
+// la date de saisie « (jj/mm) » est ajoutée au suivi quand le texte change (règle CRM : une info toujours datée)
+function suiviDate() {
+  const t = $('suivi').value.trim();
+  if (!t) return null;
+  if (t === suiviInitial.replace(/\s*\(\d{2}\/\d{2}\)$/, '')) return suiviInitial;
+  const d = new Date();
+  return `${t} (${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')})`;
+}
 
 function fill(d, id) {
   currentId = id || null;
   $('chasse').checked = !!d?.chasse;
   if (d?.chasseTrim) $('chasseTrim').value = d.chasseTrim; else $('chasseTrim').selectedIndex = 0;
   $('jcrm').value = d?.jcrm || '';
+  suiviInitial = d?.suivi || '';
+  $('suivi').value = suiviInitial.replace(/\s*\(\d{2}\/\d{2}\)$/, '');
   chasseLe = d?.chasseLe || null;
   $('chasseInfo').textContent = d?.chasse && chasseLe ? `Ajouté au tableau de chasse le ${chasseLe.slice(8, 10)}/${chasseLe.slice(5, 7)}/${chasseLe.slice(0, 4)}` : '';
   $('titre').value = d?.titre || '';
@@ -102,6 +112,7 @@ function collect() {
     chasseTrim: $('chasse').checked ? $('chasseTrim').value : null,
     chasseLe: $('chasse').checked ? (chasseLe || new Date().toISOString().slice(0, 10)) : null,
     jcrm: $('jcrm').value ? Number($('jcrm').value) : null,
+    suivi: suiviDate(),
     carsat: $('carsat').checked,
   };
   if (!d.titre) throw new Error('Indique le client et le site.');
@@ -232,6 +243,7 @@ async function charger(items) {
   if (item.type === 'shape') {
     const m0 = await item.getMetadata('pbh').catch(() => null);
     if (m0?.role === 'hdr3') { await ouvrirOrdre(m0.av); return; }
+    if (m0?.role === 'ch4' && m0.ref) item = await miro.board.getById(m0.ref).catch(() => null);   // ligne du tableau de chasse
   }
   if (item.type === 'card') {
     const m = await item.getMetadata('pbh').catch(() => null);

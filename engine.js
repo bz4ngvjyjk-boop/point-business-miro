@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM, PART_SCENARIOS,
-} from './config.js?v=22';
+} from './config.js?v=23';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -802,122 +802,133 @@ function lireJcrm(items) {
   const brut = t.item.content.replace(/<[^>]+>/g, ' ');
   const maj = (/maj (\d{2}\/\d{2} \d{2}:\d{2})/.exec(brut) || [])[1] || null;
   const data = new Map();
-  for (const m of brut.matchAll(/(\d+):([\d.]*):([A-Z?]):(\d{4}-\d{2}-\d{2})?/g)) {
-    data.set(m[1], { montant: m[2] === '' ? null : Number(m[2]), statut: m[3], signeLe: m[4] || null });
+  for (const m of brut.matchAll(/(\d+):([\d.]*):([A-Z?]):(\d{4}-\d{2}-\d{2})?(?::(\d{4}-\d{2}))?/g)) {
+    data.set(m[1], { montant: m[2] === '' ? null : Number(m[2]), statut: m[3], signeLe: m[4] || null, chantier: m[5] || null });
   }
   return { data, maj };
 }
 
 async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
+  const quarts = trimestresAffiches();
+  const TW = G4.cols.reduce((a, b) => a + b, 0);
+  const W = 2 * G.margin + TW;
   let f = findFrame(snap.frames, 'Tableau de chasse');
-  const W = 2 * G.margin + 2 * (G4.cardW + 2 * G4.cardPad) + G4.colGap;
   if (!f) {
     f = await board().createFrame({ title: ZONE4_TITLE, width: W, height: H, style: { fillColor: '#ffffff' },
       x: f3.x + f3.width / 2 + 200 + W / 2, y: top1 + H / 2 });
   }
-  if (H > f.height) { try { await resizeFrame(f, f.width, H, top1); } catch (e) { console.warn(e); } }
-  const tous = [...snap.items];
   const dans = vivants.filter((x) => inFrame(f, x.item));
-  const quarts = trimestresAffiches();
-  const colW = G4.cardW + 2 * G4.cardPad;
-  const colX = (k) => G.margin + k * (colW + G4.colGap);
+  const { data: jcrm, maj } = lireJcrm(snap.items.filter((x) => inFrame(f, x.item)));
 
-  // décor (en-têtes + fonds) et registre des n° jCRM
-  for (let k = 0; k < 2; k++) {
-    for (const role of ['bg4', 'hdr4']) {
-      if (dans.some((x) => x.meta.role === role && x.meta.k === k)) continue;
-      const it = await creer(f, 'shape', { shape: 'rectangle', content: '', width: 200, height: role === 'bg4' ? 200 : 90,
-        style: role === 'bg4' ? { fillColor: GRIS_FOND, borderOpacity: 0 }
-          : { fillColor: BLEU, color: '#ffffff', fontSize: 16, fontFamily: 'open_sans', textAlign: 'center', textAlignVertical: 'middle', borderOpacity: 0 } },
-      { role, k });
-      if (role === 'bg4') await board().sendToBack(it).catch(() => {});
-      dans.push({ item: it, meta: cache.get(it.id) });
-    }
-  }
-  const { data: jcrm, maj } = lireJcrm(tous.filter((x) => inFrame(f, x.item)));
-
-  // dossiers du tableau de chasse, rangés par trimestre visé (un trimestre passé glisse dans le trimestre en cours)
-  const cibles = [];
+  // dossiers du tableau, par trimestre visé (un trimestre passé glisse dans le trimestre en cours)
+  const blocs = quarts.map(() => []);
   for (const d of dossiers.filter((x) => x.meta.chasse)) {
     let k = quarts.indexOf(d.meta.chasseTrim || quarts[0]);
     let glisse = null;
     if (k < 0 && rangTrim(d.meta.chasseTrim) < rangTrim(quarts[0])) { k = 0; glisse = d.meta.chasseTrim; }
     if (k < 0) continue;
-    const j = d.meta.jcrm ? jcrm.get(String(d.meta.jcrm)) : null;
-    cibles.push({ d, k, glisse, j });
+    blocs[k].push({ d, glisse, j: d.meta.jcrm ? jcrm.get(String(d.meta.jcrm)) : null });
   }
-  // registre des n° jCRM à relire (pour le script)
-  const ids = [...new Set(dossiers.filter((x) => x.meta.chasse && x.meta.jcrm).map((x) => String(x.meta.jcrm)))].sort();
-  const registre = `<p>PBH-IDS (n° jCRM du tableau de chasse, lu par le script — ne pas modifier) : ${ids.join(',')}</p>`;
-  let reg = dans.find((x) => x.meta.role === 'ids4');
-  if (!reg) {
-    const it = await board().createText({ content: registre, x: f.x, y: f.y, width: W - 2 * G.margin, style: { fontSize: 10, color: '#9aa0a6' } });
-    await setMeta(it, { role: 'ids4' });
-    await addToFrame(f, it);
-    reg = { item: await board().getById(it.id) };
-  }
+  blocs.forEach((b) => b.sort((a, c) => (c.j?.montant || 0) - (a.j?.montant || 0)));
+
+  // hauteur du cadre : 2 tableaux empilés (bords hauts alignés sur les autres zones)
+  const hBloc = (n) => G4.bandeauH + G4.enteteH + Math.max(1, n) * G4.ligneH;
+  const Hz = Math.max(H, G4.top + hBloc(blocs[0].length) + G4.blocGap + hBloc(blocs[1].length) + 60);
+  if (Hz > f.height) { try { await resizeFrame(f, Math.max(f.width, W), Hz, top1); } catch (e) { console.warn(e); } }
+
+  // index des objets existants (clé logique -> objet)
+  const exist = new Map(dans.filter((x) => x.meta.k4).map((x) => [x.meta.k4, x.item]));
+  const garder = new Set();
   const syncs = [];
   const push = (p) => { if (p) syncs.push(p); };
-  push(update(reg.item, f, W / 2, H - 22, { content: registre }));
-
-  // cartes
-  const exist = new Map(dans.filter((x) => x.meta.role === 'chasse').map((x) => [x.meta.ref, x]));
-  const garder = new Set();
-  for (const c of cibles) {
-    const m = c.d.meta;
-    const fields = [{ value: m.pilote, fillColor: BLEU, textColor: '#ffffff' }];
-    if (c.j && c.j.montant !== null) fields.push({ value: keur(c.j.montant), fillColor: OR, textColor: BLEU });
-    else fields.push({ value: m.jcrm ? 'montant jCRM à relire' : 'n° jCRM manquant', fillColor: '#e7e7e7', textColor: '#5b6478' });
-    if (c.j?.statut === 'G') fields.push({ value: `Signé le ${jj(c.j.signeLe)}`, fillColor: '#1e8e4e', textColor: '#ffffff' });
-    if (c.j?.statut === 'P') fields.push({ value: 'Perdu', fillColor: '#c8341f', textColor: '#ffffff' });
-    if (c.glisse) fields.push({ value: `visé ${c.glisse}`, fillColor: '#f0a020', textColor: '#ffffff' });
-    if (m.chasseLe) fields.push({ value: `ajouté ${jj(m.chasseLe)}`, fillColor: '#eef1f7', textColor: '#5b6478' });
-    const theme4 = c.j?.statut === 'G' ? '#1e8e4e' : c.j?.statut === 'P' ? '#c8341f' : theme(m);
-    const data = { title: esc(tronque(m.titre, G4.titreMax)), style: { cardTheme: theme4 }, fields };
-    const sig = JSON.stringify(data);
-    let x = exist.get(c.d.item.id);
-    if (!x) {
-      const it = await creer(f, 'card', { ...data, width: G4.cardW }, { role: 'chasse', ref: c.d.item.id, sig });
-      x = { item: it, meta: cache.get(it.id) };
-    } else if (x.meta.sig !== sig) {
-      x.item.title = data.title; x.item.style = { ...x.item.style, ...data.style }; x.item.fields = data.fields;
-      await setMeta(x.item, { ...x.meta, sig });
-      x.modifie = true;
+  async function cellule(cle, meta, rx, ry, w, h, contenu, style) {
+    let it = exist.get(cle);
+    if (!it) {
+      it = await creer(f, 'shape', { shape: 'rectangle', content: contenu, width: w, height: h, style }, { ...meta, k4: cle });
     }
-    c.x = x;
-    garder.add(x.item.id);
+    garder.add(it.id);
+    const cur = it.style || {};
+    const restyle = (cur.fillColor || '').toLowerCase() !== (style.fillColor || '').toLowerCase()
+      || (cur.color || '').toLowerCase() !== (style.color || '').toLowerCase();
+    push(update(it, f, rx, ry, { width: w, height: h, content: contenu, ...(restyle ? { style } : {}) }));
   }
-  await Promise.all(dans.filter((x) => x.meta.role === 'chasse' && !garder.has(x.item.id)).map((x) => remove(x.item)));
+  const base = { fontFamily: 'open_sans', textAlignVertical: 'middle', borderOpacity: 0 };
+  const xCol = (i) => G.margin + G4.cols.slice(0, i).reduce((a, b) => a + b, 0);
 
-  // en-têtes, fonds, rangement (signées en tête, puis montant décroissant)
+  let y = G4.top;
   for (let k = 0; k < 2; k++) {
-    const q = quarts[k];
-    const list = cibles.filter((c) => c.k === k).sort((a, b) =>
-      ((b.j?.statut === 'G') - (a.j?.statut === 'G')) || ((b.j?.montant || 0) - (a.j?.montant || 0)));
+    const q = quarts[k], list = blocs[k];
     const actifs = list.filter((c) => c.j?.statut !== 'P');
     const total = actifs.reduce((s, c) => s + (c.j?.montant || 0), 0);
     const signe = actifs.filter((c) => c.j?.statut === 'G').reduce((s, c) => s + (c.j?.montant || 0), 0);
     const reste = total - signe;
     const obj = OBJECTIF_TRIM[q.slice(-4)] || 2750;
     const [pNeg, pPos] = PART_SCENARIOS;
-    const hdr = `<p><strong>${q} · ${meur(total)} / ${meur(obj)} (${Math.round((100 * total) / obj)} %) · ${actifs.length} affaire${actifs.length > 1 ? 's' : ''}</strong></p>`
-      + `<p>signé ${keur(signe)} · scénarios ${meur(signe + pNeg * reste)} → ${meur(signe + pPos * reste)}${k === 0 && maj ? ` · jCRM ${maj}` : ''}</p>`;
-    for (const x of dans) {
-      if (x.meta.k !== k) continue;
-      if (x.meta.role === 'hdr4') push(update(x.item, f, colX(k) + colW / 2, G4.top - 45 - 8, { width: colW, height: 90, content: hdr }));
-      if (x.meta.role === 'bg4') { const h = H - G4.top - G.margin - 30; push(update(x.item, f, colX(k) + colW / 2, G4.top + h / 2, { width: colW, height: h })); }
+    const nbS = actifs.filter((c) => c.j?.statut === 'G').length;
+    const bandeau = `<p><strong>${q} · ${meur(total)} ciblés / objectif ${meur(obj)} (${Math.round((100 * total) / obj)} %) · ${actifs.length} affaire${actifs.length > 1 ? 's' : ''}</strong></p>`
+      + `<p>déjà signé ${keur(signe)} (${nbS}) · scénarios ${meur(signe + pNeg * reste)} → ${meur(signe + pPos * reste)}${maj ? ` · montants jCRM du ${maj}` : ''}</p>`;
+    await cellule(`b${k}`, { role: 'ch4' }, W / 2, y + G4.bandeauH / 2 - 6, TW, G4.bandeauH - 12, bandeau,
+      { ...base, fillColor: BLEU, color: '#ffffff', fontSize: 18, textAlign: 'center' });
+    y += G4.bandeauH;
+    const titres = ['Affaire', 'Pilote', 'Suivi / échéance annoncée', 'Montant (k€)'];
+    for (let i = 0; i < 4; i++) {
+      await cellule(`e${k}${i}`, { role: 'ch4' }, xCol(i) + G4.cols[i] / 2, y + G4.enteteH / 2, G4.cols[i], G4.enteteH,
+        `<p><strong>${titres[i]}</strong></p>`, { ...base, fillColor: '#dfe5f0', color: BLEU, fontSize: 15, textAlign: i === 3 ? 'right' : i === 1 ? 'center' : 'left' });
     }
-    let y = G4.top + 12;
-    for (const c of list) {
-      const h = c.x.item.height || 88;
-      const p = update(c.x.item, f, colX(k) + G4.cardPad + G4.cardW / 2, y + h / 2);
-      if (p) push(p); else if (c.x.modifie) push(syncSur(c.x.item, f));
-      y += h + G4.gap;
+    y += G4.enteteH;
+    if (!list.length) {
+      await cellule(`v${k}`, { role: 'ch4' }, W / 2, y + G4.ligneH / 2, TW, G4.ligneH,
+        '<p><em>Aucune affaire : cocher « Dans le tableau de chasse » sur une fiche.</em></p>', { ...base, fillColor: '#ffffff', color: '#9aa0a6', fontSize: 14, textAlign: 'center' });
+      y += G4.ligneH;
     }
+    const rowP = [];
+    list.forEach((c, n) => {
+      const m = c.d.meta, sg = c.j?.statut === 'G', perdu = c.j?.statut === 'P';
+      const fond = n % 2 ? '#f6f8fb' : '#ffffff';
+      const coul = sg ? '#1e8e4e' : perdu ? '#c8341f' : '#1a1a1a';
+      let suivi;
+      if (sg) suivi = `Signé le ${jourLong(c.j.signeLe)}`;
+      else if (perdu) suivi = 'Perdu';
+      else {
+        const morceaux = [m.suivi, c.j?.chantier ? `chantier ${moisLong(c.j.chantier)}` : null,
+          c.glisse ? `visé ${c.glisse}` : null, !m.jcrm ? 'n° jCRM à renseigner' : null].filter(Boolean);
+        suivi = morceaux.join(' · ');
+      }
+      const montant = c.j?.montant != null ? Math.round(c.j.montant).toLocaleString('fr-FR') : '—';
+      const cells = [`<p><strong>${esc(m.titre)}</strong></p>`, `<p>${m.pilote}</p>`,
+        sg || perdu ? `<p>${suivi}</p>` : `<p><em>${esc(suivi)}</em></p>`, `<p>${montant}</p>`];
+      const ry = y + n * G4.ligneH + G4.ligneH / 2;
+      // (les cellules ouvrent la fiche du dossier au clic : métadonnée « ref »)
+      cells.forEach((html, i) => rowP.push(cellule(`r${c.d.item.id}_${i}`, { role: 'ch4', ref: c.d.item.id },
+        xCol(i) + G4.cols[i] / 2, ry, G4.cols[i], G4.ligneH, html,
+        { ...base, fillColor: fond, color: i === 2 && !sg && !perdu ? '#6b6f76' : coul, fontSize: 14,
+          textAlign: i === 3 ? 'right' : i === 1 ? 'center' : 'left' })));
+    });
+    await Promise.all(rowP);
+    y += list.length * G4.ligneH + G4.blocGap;
   }
   await Promise.all(syncs);
-  try { await resizeFrame(f, W, H, top1, f3.x + f3.width / 2 + 200); } catch (e) { console.warn('Cadre 4', e); }
+  // registre des n° jCRM à relire (pour le script)
+  const ids = [...new Set(dossiers.filter((x) => x.meta.chasse && x.meta.jcrm).map((x) => String(x.meta.jcrm)))].sort();
+  const registre = `<p>PBH-IDS (n° jCRM du tableau de chasse, lu par le script — ne pas modifier) : ${ids.join(',')}</p>`;
+  let reg = dans.find((x) => x.meta.role === 'ids4');
+  if (!reg) {
+    const it = await board().createText({ content: registre, x: f.x, y: f.y, width: TW, style: { fontSize: 10, color: '#9aa0a6' } });
+    await setMeta(it, { role: 'ids4' });
+    await addToFrame(f, it);
+    reg = { item: await board().getById(it.id) };
+  }
+  const hFinal = Math.max(H, y + 40);
+  const fin = [update(reg.item, f, W / 2, hFinal - 26, { content: registre })];
+  // anciens objets (cartes de la v22, lignes d'affaires sorties du tableau)
+  const perimes = dans.filter((x) => (x.meta.role === 'chasse' || x.meta.role === 'bg4' || x.meta.role === 'hdr4'
+    || (x.meta.k4 && !garder.has(x.item.id))));
+  await Promise.all([...fin, ...perimes.map((x) => remove(x.item))]);
+  try { await resizeFrame(f, W, hFinal, top1, f3.x + f3.width / 2 + 200); } catch (e) { console.warn('Cadre 4', e); }
 }
+const MOIS_LONG = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+const jourLong = (iso) => (iso ? `${Number(iso.slice(8, 10))} ${MOIS_LONG[Number(iso.slice(5, 7)) - 1]}` : '');
+const moisLong = (ym) => `${MOIS_LONG[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
 
 export async function stats() {
   const snap = await snapshot();
