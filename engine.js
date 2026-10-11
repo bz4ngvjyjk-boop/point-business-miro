@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=46';
+} from './config.js?v=47';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -601,9 +601,11 @@ const isoJour = (d) => d.toISOString().slice(0, 10);
 function alerte(echeance) {
   if (!echeance) return null;
   const j = Math.round((new Date(echeance) - new Date(isoJour(new Date()))) / 86400000);
-  if (j < 0) return { value: 'Dépassée', fillColor: '#c8341f', textColor: '#ffffff' };
-  if (j <= 15) return { value: `J-${j}`, fillColor: j <= 7 ? '#c8341f' : '#f0a020', textColor: '#ffffff' };
-  return null;
+  // étiquette = date d'échéance ; couleur selon le temps restant (dépassée ou ≤ 7 j rouge, ≤ 15 j orange, sinon gris)
+  const date = `${echeance.slice(8, 10)}/${echeance.slice(5, 7)}`;
+  if (j < 0) return { value: `${date} dépassée`, fillColor: '#c8341f', textColor: '#ffffff' };
+  if (j <= 15) return { value: date, fillColor: j <= 7 ? '#c8341f' : '#f0a020', textColor: '#ffffff' };
+  return { value: date, fillColor: '#e7e7e7', textColor: '#1a1a1a' };
 }
 const theme = (m) => { const e = enjeu(m.enjeu); return e.fill === '#ffffff' ? '#9aa0a6' : e.fill; };
 const echTxt = (m) => { const e = echeanceMin(m); return e ? ` · éch. ${e.slice(8, 10)}/${e.slice(5, 7)}` : ''; };
@@ -614,8 +616,7 @@ function cardData2(m) {
   const a = alerte(echeanceMin(m));
   if (a) fields.push(a);
   if (m.carsat) fields.push({ value: 'CARSAT', fillColor: CARSAT, textColor: '#ffffff' });
-  const ech = echTxt(m);
-  return { title: esc(tronque(m.titre, G2.titreMax - ech.length)) + ech, style: { cardTheme: theme(m) }, fields };
+  return { title: esc(tronque(m.titre, G2.titreMax)), style: { cardTheme: theme(m) }, fields };   // la date est dans l'étiquette
 }
 
 // Ordre d'une colonne de priorité : ordre manuel (clic sur l'en-tête) ; les cartes pas encore classées
@@ -917,9 +918,8 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
       ...c.livr.filter(Boolean).map((l) => ({ value: l, fillColor: '#e3f4d6', textColor: '#245c12' }))];
     const a = alerte(c.t.echeance);
     if (a) fields.push(a);
-    const ech = c.t.echeance ? ` · éch. ${c.t.echeance.slice(8, 10)}/${c.t.echeance.slice(5, 7)}` : '';
     const coche = c.t.fait ? '✓ ' : '';
-    const data = { title: coche + esc(tronque(m.titre, G3.titreMax - ech.length - coche.length)) + ech,
+    const data = { title: coche + esc(tronque(m.titre, G3.titreMax - coche.length)),
       style: { cardTheme: c.t.fait ? '#1e8e4e' : theme(m) }, fields };
     const sig = JSON.stringify(data);
     let x = exist.get(c.key);
