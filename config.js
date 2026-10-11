@@ -54,5 +54,4 @@ export const ZONE4_TITLE = '4 · Tableau de chasse';
 export const G4 = { cols: [560, 110, 1100, 170], ligneH: 22, enteteH: 26, bandeauH: 84, blocGap: 70, top: 110 };   // tableau façon slide CODIR
 // Objectif de signatures par trimestre (k€) : 2026 = 10 M€/an, 2027 = 11 M€/an (COCOM / CODIR)
 export const OBJECTIF_TRIM = { 2026: 2500, 2027: 2750, 2028: 2750 };
-export const PART_SCENARIOS = [0.6, 0.9];   // scénarios négatif / positif sur le reste à signer
 export const META = 'pbh';            // clé de métadonnées de l'app sur chaque objet

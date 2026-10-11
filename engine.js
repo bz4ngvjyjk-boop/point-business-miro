@@ -7,8 +7,8 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-  ZONE4_TITLE, G4, OBJECTIF_TRIM, PART_SCENARIOS,
-} from './config.js?v=30';
+  ZONE4_TITLE, G4, OBJECTIF_TRIM,
+} from './config.js?v=31';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -916,12 +916,10 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
     const actifs = list.filter((c) => c.j?.statut !== 'P');
     const total = actifs.reduce((s, c) => s + (c.j?.montant || 0), 0);
     const signe = actifs.filter((c) => c.j?.statut === 'G').reduce((s, c) => s + (c.j?.montant || 0), 0);
-    const reste = total - signe;
     const obj = OBJECTIF_TRIM[q.slice(-4)] || 2750;
-    const [pNeg, pPos] = PART_SCENARIOS;
     const nbS = actifs.filter((c) => c.j?.statut === 'G').length;
     const bandeau = `<p><strong>${q} · ${meur(total)} ciblés / objectif ${meur(obj)} (${Math.round((100 * total) / obj)} %) · ${actifs.length} affaire${actifs.length > 1 ? 's' : ''}</strong></p>`
-      + `<p>déjà signé ${keur(signe)} (${nbS}) · scénarios ${meur(signe + pNeg * reste)} → ${meur(signe + pPos * reste)}${maj ? ` · montants jCRM du ${maj}` : ''}</p>`;
+      + `<p>déjà signé ${keur(signe)} (${nbS})${maj ? ` · montants jCRM du ${maj}` : ''}</p>`;
     await cellule(`b${k}`, { role: 'ch4' }, W / 2, y + G4.bandeauH / 2 - 6, TW, G4.bandeauH - 12, bandeau,
       { ...base, fillColor: BLEU, color: '#ffffff', fontSize: 18, textAlign: 'center' });
     y += G4.bandeauH;
