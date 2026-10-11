@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=44';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers } from './engine.js?v=44';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=45';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers } from './engine.js?v=45';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -262,7 +262,8 @@ function dessinerOrdre(list) {
       catch (e) { $('ordreStatus').textContent = e.message; }
     };
     if (x.fait) row.classList.add('fait');
-    row.querySelector('.t').title = x.titre;
+    row.querySelector('.t').title = `${x.titre} — cliquer pour modifier la fiche`;
+    row.querySelector('.t').onclick = () => ouvrirFiche(x.dossierId);
     const [haut, bas] = row.querySelectorAll('button');
     haut.disabled = i === 0 || list[i - 1].r !== x.r; bas.disabled = i === list.length - 1 || list[i + 1].r !== x.r;
     haut.onclick = () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; dessinerOrdre(list); ordreModifie(); };
@@ -284,7 +285,8 @@ function dessinerOrdre2(list) {
     row.innerHTML = `<div><div class="t">${i + 1}. ${x.titre}</div><div class="m">${x.pilote}${ech}</div>
         <select class="lg" title="Changer de colonne">${COLS2.map((c) => `<option${c === ordreZ2 ? ' selected' : ''}>${c}</option>`).join('')}</select></div>
       <button type="button" title="Monter">▲</button><button type="button" title="Descendre">▼</button>`;
-    row.querySelector('.t').title = x.titre;
+    row.querySelector('.t').title = `${x.titre} — cliquer pour modifier la fiche`;
+    row.querySelector('.t').onclick = () => ouvrirFiche(x.id);
     row.querySelector('.lg').onchange = async (ev) => {
       const col = ev.target.value;
       $('ordreStatus').textContent = `Passage en ${col}…`;
@@ -330,6 +332,25 @@ function chercherZ2() {
   }
 }
 $('z2Cherche').addEventListener('input', chercherZ2);
+// Ouvre la fiche d'un dossier depuis une vue « ordre » ; « ← Retour à l'ordre » ramène à la liste
+let retourOrdre = null;
+async function ouvrirFiche(id) {
+  await flushOrdre();
+  const it = await miro.board.getById(id).catch(() => null);
+  const d = it && await readDossier(it);
+  if (!d) return;
+  retourOrdre = ordreZ2 ? { z2: ordreZ2 } : { av: ordreAV };
+  afficherVue(false);
+  fill(d, id);
+  $('retourOrdre').hidden = false;
+  $('retourOrdre').textContent = `← Retour à l'ordre ${ordreZ2 || ordreAV}`;
+}
+$('retourOrdre').onclick = async () => {
+  await flush();
+  const r = retourOrdre;
+  $('retourOrdre').hidden = true;
+  if (r?.z2) await ouvrirOrdre2(r.z2); else if (r?.av) await ouvrirOrdre(r.av);
+};
 async function ouvrirOrdre2(col) {
   await flushOrdre();
   ordreZ2 = col;
@@ -391,6 +412,7 @@ $('ordreAuto').onclick = async () => {
 
 async function charger(items) {
   if (!items || items.length !== 1) return;
+  $('retourOrdre').hidden = true;
   await flush();
   await flushOrdre();
   let item = items[0];
