@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=40';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches } from './engine.js?v=40';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=42';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite } from './engine.js?v=42';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -236,7 +236,7 @@ $('import').onclick = () => busy('Lecture du fichier d\'import…', async () => 
 // Sélection d'une pastille sur le board -> chargement de sa fiche
 // (pastille de la zone 1, ou carte de la zone 2 qui renvoie à sa pastille)
 // ── Vue « ordre de traitement » d'un avant-vente (clic sur un en-tête de la zone 3) ──
-let ordreAV = null, ordreListe = [];
+let ordreAV = null, ordreListe = [], ordreZ2 = null;   // ordreZ2 : colonne de priorité affichée (zone 2), sinon zone 3
 function afficherVue(ordre) { $('vueOrdre').hidden = !ordre; $('vueDossier').hidden = ordre; }
 const LIGNES = ['Cette semaine', 'Plus tard'];
 function dessinerOrdre(list) {
@@ -272,8 +272,46 @@ function dessinerOrdre(list) {
   if (!list.length) box.innerHTML = '<div class="sub">Aucun plan ni devis attendu pour cette ressource.</div>';
   ordreListe = list;
 }
+// ── Vue « ordre » d'une colonne de priorité (clic sur un en-tête de la zone 2) ──
+const COLS2 = ['P1', 'P2', 'P3', 'Autres', '—'];
+function dessinerOrdre2(list) {
+  const box = $('ordreListe');
+  box.innerHTML = '';
+  list.forEach((x, i) => {
+    const ech = x.echeance ? ` · éch. ${x.echeance.slice(8, 10)}/${x.echeance.slice(5, 7)}` : '';
+    const row = document.createElement('div');
+    row.className = 'oi';
+    row.innerHTML = `<div><div class="t">${i + 1}. ${x.titre}</div><div class="m">${x.pilote}${ech}</div>
+        <select class="lg" title="Changer de colonne">${COLS2.map((c) => `<option${c === ordreZ2 ? ' selected' : ''}>${c}</option>`).join('')}</select></div>
+      <button type="button" title="Monter">▲</button><button type="button" title="Descendre">▼</button>`;
+    row.querySelector('.t').title = x.titre;
+    row.querySelector('.lg').onchange = async (ev) => {
+      const col = ev.target.value;
+      $('ordreStatus').textContent = `Passage en ${col}…`;
+      try { await changerPriorite(x.id, col); list.splice(i, 1); dessinerOrdre2(list); $('ordreStatus').textContent = `« ${x.titre} » passé en ${col}.`; }
+      catch (e) { $('ordreStatus').textContent = e.message; }
+    };
+    const [haut, bas] = row.querySelectorAll('button');
+    haut.disabled = i === 0; bas.disabled = i === list.length - 1;
+    haut.onclick = () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; dessinerOrdre2(list); ordreModifie(); };
+    bas.onclick = () => { [list[i + 1], list[i]] = [list[i], list[i + 1]]; dessinerOrdre2(list); ordreModifie(); };
+    box.appendChild(row);
+  });
+  if (!list.length) box.innerHTML = '<div class="sub">Aucun dossier dans cette colonne.</div>';
+  ordreListe = list;
+}
+async function ouvrirOrdre2(col) {
+  await flushOrdre();
+  ordreZ2 = col;
+  afficherVue(true);
+  $('ordreTtl').textContent = `Ordre · ${col === 'Autres' ? 'Autres' : `Priorité ${col.slice(1)}`}`;
+  $('ordreStatus').textContent = 'Chargement…';
+  dessinerOrdre2(await dossiersZone2(col));
+  $('ordreStatus').textContent = '';
+}
 async function ouvrirOrdre(av) {
   await flushOrdre();
+  ordreZ2 = null;
   ordreAV = av;
   afficherVue(true);
   $('ordreTtl').textContent = `Ordre de traitement · ${av}`;
@@ -294,8 +332,13 @@ async function sauverOrdre() {
   ordreEnCours = true;
   $('ordreStatus').textContent = 'Enregistrement…';
   try {
-    await enregistrerOrdreAV(ordreAV, ordreListe.map((x) => (x.r !== x.rAuto ? { key: x.key, r: x.r } : x.key)));
-    $('ordreStatus').textContent = 'Ordre enregistré automatiquement, zone 3 mise à jour.';
+    if (ordreZ2) {
+      await enregistrerOrdre2(ordreZ2, ordreListe.map((x) => x.id));
+      $('ordreStatus').textContent = 'Ordre enregistré automatiquement, zone 2 mise à jour.';
+    } else {
+      await enregistrerOrdreAV(ordreAV, ordreListe.map((x) => (x.r !== x.rAuto ? { key: x.key, r: x.r } : x.key)));
+      $('ordreStatus').textContent = 'Ordre enregistré automatiquement, zone 3 mise à jour.';
+    }
   }
   catch (e) { $('ordreStatus').textContent = e.message; }
   finally { ordreEnCours = false; if (ordreARefaire) { ordreARefaire = false; sauverOrdre(); } }
@@ -304,7 +347,11 @@ async function flushOrdre() { if (minuterieOrdre) { clearTimeout(minuterieOrdre)
 $('ordreRetour').onclick = async () => { await flushOrdre(); afficherVue(false); };
 $('ordreAuto').onclick = async () => {
   $('ordreStatus').textContent = "Retour à l'ordre automatique…";
-  try { await enregistrerOrdreAV(ordreAV, []); dessinerOrdre(await tachesAV(ordreAV)); $('ordreStatus').textContent = 'Ordre automatique rétabli.'; }
+  try {
+    if (ordreZ2) { await enregistrerOrdre2(ordreZ2, []); dessinerOrdre2(await dossiersZone2(ordreZ2)); }
+    else { await enregistrerOrdreAV(ordreAV, []); dessinerOrdre(await tachesAV(ordreAV)); }
+    $('ordreStatus').textContent = 'Ordre automatique rétabli.';
+  }
   catch (e) { $('ordreStatus').textContent = e.message; }
 };
 
@@ -316,6 +363,7 @@ async function charger(items) {
   if (item.type === 'shape') {
     const m0 = await item.getMetadata('pbh').catch(() => null);
     if (m0?.role === 'hdr3') { await ouvrirOrdre(m0.av); return; }
+    if (m0?.role === 'hdr2') { await ouvrirOrdre2(m0.col); return; }
     if (m0?.role === 'ch4' && m0.ref) item = await miro.board.getById(m0.ref).catch(() => null);   // ligne du tableau de chasse
   }
   if (item.type === 'card') {

@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=40';
+} from './config.js?v=42';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -615,6 +615,32 @@ function cardData2(m) {
   return { title: esc(tronque(m.titre, G2.titreMax - ech.length)) + ech, style: { cardTheme: theme(m) }, fields };
 }
 
+// Ordre d'une colonne de priorité : ordre manuel (clic sur l'en-tête) ; les cartes pas encore classées
+// (nouvelle carte, carte basculée de la colonne précédente) passent en tête, dans l'ordre automatique.
+async function ordreManuel2(col) { return (await board().getAppData(`ordre2_${col}`).catch(() => null)) || []; }
+const triAuto2 = (a, b) => ordreEnjeu(a.meta.enjeu) - ordreEnjeu(b.meta.enjeu) || (echeanceMin(a.meta) || '9').localeCompare(echeanceMin(b.meta) || '9');
+function triZone2(a, b, manuel) {
+  const ia = manuel.indexOf(a.item.id), ib = manuel.indexOf(b.item.id);
+  if (ia < 0 && ib < 0) return triAuto2(a, b);
+  if (ia < 0) return -1;
+  if (ib < 0) return 1;
+  return ia - ib;
+}
+export async function dossiersZone2(col) {
+  const snap = await snapshot();
+  const manuel = await ordreManuel2(col);
+  return snap.items.filter((x) => x.meta?.role === 'dossier' && x.meta.priorite === col).sort((a, b) => triZone2(a, b, manuel))
+    .map((x) => ({ id: x.item.id, titre: x.meta.titre, pilote: x.meta.pilote, enjeu: x.meta.enjeu, echeance: echeanceMin(x.meta) }));
+}
+export async function enregistrerOrdre2(col, ids) {
+  await board().setAppData(`ordre2_${col}`, ids);
+  await layout({ pilotes: new Set() });
+}
+export async function changerPriorite(id, col) {
+  const item = await board().getById(id);
+  await setMeta(item, { ...(await metaOf(item)), priorite: col, maj: new Date().toISOString() });
+  await layout({ pilotes: new Set() });
+}
 async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
   let f = findFrame(snap.frames, 'Gestion des priorités');
   if (!f) {
@@ -652,6 +678,24 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
       await setMeta(d.item, d.meta);
     }
   }
+  // 1 bis. colonne pleine : la dernière carte bascule dans la colonne suivante (P1 → P2 → P3 → Autres) ;
+  // la priorité de la fiche est mise à jour. Au-delà de la colonne « Autres » : indicateur « +n ».
+  const basZ2 = H - G.margin;
+  const hCarte = (d) => parRef.get(d.item.id)?.item.height || 88;
+  const man2 = Object.fromEntries(await Promise.all(COLONNES_PRIO.map(async (p) => [p, await ordreManuel2(p)])));
+  const tri2 = (a, b) => triZone2(a, b, man2[a.meta.priorite] || []);
+  const capacite = (list) => {
+    let y = G2.top + 12, n = 0;
+    for (const d of list) { const h = hCarte(d); if (y + h > basZ2) break; y += h + G2.gap; n++; }
+    return n;
+  };
+  for (let k = 0; k < COLONNES_PRIO.length - 1; k++) {
+    const list = dossiers.filter((d) => d.meta.priorite === COLONNES_PRIO[k]).sort(tri2);
+    for (const d of list.slice(capacite(list))) {
+      d.meta = { ...d.meta, priorite: COLONNES_PRIO[k + 1], maj: new Date().toISOString() };
+      await setMeta(d.item, d.meta);
+    }
+  }
   // 2. cartes : création / mise à jour si changement / suppression des orphelines
   const prio = dossiers.filter((d) => COLONNES_PRIO.includes(d.meta.priorite));
   const garder = new Set();
@@ -681,22 +725,31 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
   const push = (p) => { if (p) syncs.push(p); };
   for (const [k, p] of COLONNES_PRIO.entries()) {
     const left = G.margin + k * (colW + G2.colGap);
-    const list = prio.filter((d) => d.meta.priorite === p).sort((a, b) =>
-      ordreEnjeu(a.meta.enjeu) - ordreEnjeu(b.meta.enjeu) || (echeanceMin(a.meta) || '9').localeCompare(echeanceMin(b.meta) || '9'));
+    const list = prio.filter((d) => d.meta.priorite === p).sort(tri2);
     for (const x of dans) {
       if (x.meta.col !== p) continue;
       if (x.meta.role === 'bg2') { const h = H - G2.top - G.margin + G.hdrH; push(update(x.item, f, left + colW / 2, G2.top - G.hdrH + h / 2, { width: colW, height: h })); }
       if (x.meta.role === 'hdr2') push(update(x.item, f, left + colW / 2, G2.top - G.hdrH / 2, { width: colW, height: G.hdrH, content: `<p><strong>${LIBELLE_PRIO[p]} · ${list.length}</strong></p>` }));
     }
-    let y = G2.top + 12;                              // empilement selon la hauteur réelle, espace constant
+    let y = G2.top + 12, visibles = 0;                // empilement selon la hauteur réelle, espace constant
     await largeurCartes(list.map((d) => d.carte2.item), G2.cardW, f);
-    list.forEach((d) => {
+    for (const d of list) {
       const it = d.carte2.item;
       const h = it.height || 88;
-      const pr = update(it, f, left + G2.cardPad + G2.cardW / 2, y + h / 2);
-      y += h + G2.gap;
+      const tient = y + h <= basZ2;
+      const pr = update(it, f, left + G2.cardPad + G2.cardW / 2, tient ? y + h / 2 : basZ2 - h / 2);   // au-delà : empilées en bas
+      if (tient) { y += h + G2.gap; visibles++; }
       if (pr) push(pr); else if (d.carte2.modifie) push(syncSur(it, f));
-    });
+    }
+    // indicateur « +n » (en pratique, seule la colonne « Autres » peut encore déborder)
+    let ovf = dans.find((x) => x.meta.role === 'ovf2' && x.meta.col === p)?.item;
+    const n = list.length - visibles;
+    if (n > 0) {
+      if (!ovf) ovf = await creer(f, 'shape', { shape: 'round_rectangle', content: '', width: 70, height: 30,
+        style: { fillColor: '#c8341f', color: '#ffffff', fontSize: 14, fontFamily: 'open_sans', textAlign: 'center', textAlignVertical: 'middle', borderOpacity: 0 } }, { role: 'ovf2', col: p });
+      push(update(ovf, f, left + colW - 45, basZ2 - 18, { content: `<p><strong>+${n}</strong></p>` }));
+      await board().bringToFront(ovf).catch(() => {});
+    } else if (ovf) push(remove(ovf));
   }
   await Promise.all(syncs);
   try { await resizeFrame(f, W2, H, top1, f1.x + f1.width / 2 + 200); } catch (e) { console.warn('Réduction du cadre 2 reportée', e); }
