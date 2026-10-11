@@ -7,7 +7,7 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=11';
+} from './config.js?v=12';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -182,6 +182,26 @@ export async function importDossiers(list, onProgress) {
   return { crees: todo.length - echecs, echecs, ignores: list.length - todo.length, repares: 0, ...r };
 }
 
+// ── Réparation ponctuelle (11/10/2026) : priorités faussées par un changement de grille de la zone 2.
+// Restaure les priorités de l'export S40 ; seules des empreintes (FNV-1a de « client|pilote ») sont publiées.
+const PRIO_S40 = {"6c2f6440": "P3", "2ecaabd2": "P2", "164d9e91": "P3", "adf714cb": "P2", "14b45408": "P1", "eb177da2": "P1", "1db1f5f1": "Autres", "f2b7af82": "Autres", "a17f3fa1": "Autres", "9fbedd44": "P3", "aea8e6e2": "Autres", "c1a8029f": "P3", "8f017a25": "P1", "7ff47875": "P1", "45f8991d": "P3", "9dec9b3d": "P1", "3eacf1c5": "P2", "ea104ca1": "P2", "aabd8a93": "P1", "b40a5c26": "P2", "2e78b6c6": "P2", "d3f7b3ae": "P2", "18572970": "P1", "39972e6a": "P3", "3f1442cb": "P3", "f8b94894": "P3", "784da198": "P2"};
+function fnv1a(t) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, '0');
+}
+async function restaurerPriorites(dossiers) {
+  const fait = await board().getAppData('prioRestauree1').catch(() => null);
+  if (fait) return 0;
+  let n = 0;
+  for (const d of dossiers) {
+    const cible = PRIO_S40[fnv1a(`${d.meta.titre}|${d.meta.pilote}`)] || '—';
+    if (d.meta.priorite !== cible) { d.meta = { ...d.meta, priorite: cible }; await setMeta(d.item, d.meta); n++; }
+  }
+  await board().setAppData('prioRestauree1', true);
+  return n;
+}
+
 // ══ RANGEMENT GÉNÉRAL ══
 // Un seul rangement à la fois : une demande arrivée pendant un rangement est rejouée juste après.
 let enCours = null;
@@ -201,6 +221,7 @@ async function layoutInterne({ pilotes = null } = {}) {
   for (const o of orphelins) await remove(o.item);
   const vivants = snap.items.filter((x) => x.meta);
   const dossiers = vivants.filter((x) => x.meta.role === 'dossier');
+  await restaurerPriorites(dossiers);
 
   const H = await layoutZone1(f1, vivants, dossiers, pilotes);
   const top1 = f1.y - f1.height / 2;
@@ -373,12 +394,13 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
   const colW = G2.cardW + 2 * G2.cardPad;
   const W2 = 2 * G.margin + 4 * colW + 3 * G2.colGap;
   const relX = (it) => (it.relativeTo === 'parent_top_left' ? it.x : it.x - (f.x - f.width / 2));
+  const GEO2 = `${colW}|${G2.colGap}|${G.margin}`;   // signature de la grille courante
   const colOf = (rx) => COLONNES_PRIO[Math.max(0, Math.min(3, Math.floor((rx - G.margin) / (colW + G2.colGap))))];
 
   // 1. glisser-déposer : carte déplacée dans une autre colonne -> nouvelle priorité de la fiche
   for (const d of dossiers) {
     const c = parRef.get(d.item.id);
-    if (!c) continue;
+    if (!c || c.meta.geo !== GEO2) continue;          // grille changée : ce n'est pas un glissement
     const col = colOf(relX(c.item));
     if (col !== c.meta.col && col !== d.meta.priorite) {
       d.meta = { ...d.meta, priorite: col, maj: new Date().toISOString() };
@@ -393,12 +415,14 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
     const sig = JSON.stringify([data, d.meta.priorite]);
     let c = parRef.get(d.item.id);
     if (!c) {
-      const it = await creer(f, 'card', { ...data, width: G2.cardW }, { role: 'prio', ref: d.item.id, col: d.meta.priorite, sig });
+      const it = await creer(f, 'card', { ...data, width: G2.cardW }, { role: 'prio', ref: d.item.id, col: d.meta.priorite, sig, geo: GEO2 });
       c = { item: it, meta: cache.get(it.id), neuf: true };
     } else if (c.meta.sig !== sig) {
       c.item.title = data.title; c.item.style = { ...c.item.style, ...data.style }; c.item.fields = data.fields;
-      await setMeta(c.item, { ...c.meta, col: d.meta.priorite, sig });
+      await setMeta(c.item, { ...c.meta, col: d.meta.priorite, sig, geo: GEO2 });
       c.modifie = true;
+    } else if (c.meta.geo !== GEO2 || c.meta.col !== d.meta.priorite) {
+      await setMeta(c.item, { ...c.meta, col: d.meta.priorite, geo: GEO2 });
     }
     d.carte2 = c;
     garder.add(c.item.id);
