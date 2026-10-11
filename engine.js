@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=32';
+} from './config.js?v=33';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -870,14 +870,31 @@ const rangTrim = (q) => { const m = /T(\d) (\d{4})/.exec(q || ''); return m ? Nu
 const keur = (v) => `${Math.round(v).toLocaleString('fr-FR')} k€`;
 const meur = (v) => `${(v / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} M€`;
 const jj = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
+// Suivi affiché : le commentaire saisi sur la fiche, sauf si jCRM porte une action plus récente
+function suiviCourant(manuel, action) {
+  if (!action) return manuel || null;
+  const [ya, ma, ja] = action.date.split('-').map(Number);
+  const da = new Date(ya, ma - 1, ja);
+  const md = /\((\d{2})\/(\d{2})\)\s*$/.exec(manuel || '');
+  if (md) {
+    const now = new Date();
+    let dm = new Date(now.getFullYear(), Number(md[2]) - 1, Number(md[1]));
+    if (dm > now) dm = new Date(now.getFullYear() - 1, Number(md[2]) - 1, Number(md[1]));
+    if (dm >= da) return manuel;
+  }
+  return `${action.texte} (${String(ja).padStart(2, '0')}/${String(ma).padStart(2, '0')})`;
+}
 function lireJcrm(items) {
   const t = items.find((x) => x.item.type === 'text' && (x.item.content || '').includes('PBH-JCRM'));
   if (!t) return { data: new Map(), maj: null };
   const brut = t.item.content.replace(/<[^>]+>/g, ' ');
   const maj = (/maj (\d{2}\/\d{2} \d{2}:\d{2})/.exec(brut) || [])[1] || null;
   const data = new Map();
-  for (const m of brut.matchAll(/(\d+):([\d.]*):([A-Z?]):(\d{4}-\d{2}-\d{2})?(?::(\d{4}-\d{2}))?/g)) {
-    data.set(m[1], { montant: m[2] === '' ? null : Number(m[2]), statut: m[3], signeLe: m[4] || null, chantier: m[5] || null });
+  for (const m of brut.matchAll(/(\d+):([\d.]*):([A-Z?]):(\d{4}-\d{2}-\d{2})?(?::(\d{4}-\d{2})?)?(?::(\d{4}-\d{2}-\d{2})?:([^;\s<]*))?/g)) {
+    let texte = null;
+    try { texte = m[7] ? decodeURIComponent(m[7]) : null; } catch (e) { /* texte illisible */ }
+    data.set(m[1], { montant: m[2] === '' ? null : Number(m[2]), statut: m[3], signeLe: m[4] || null, chantier: m[5] || null,
+      action: m[6] && texte ? { date: m[6], texte } : null });
   }
   return { data, maj };
 }
@@ -967,7 +984,7 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
       if (sg) suivi = `Signé le ${jourLong(c.j.signeLe)}`;
       else if (perdu) suivi = 'Perdu';
       else {
-        const morceaux = [m.suivi, c.j?.chantier ? `chantier ${moisLong(c.j.chantier)}` : null,
+        const morceaux = [suiviCourant(m.suivi, c.j?.action), c.j?.chantier ? `chantier ${moisLong(c.j.chantier)}` : null,
           c.glisse ? `visé ${c.glisse}` : null, !m.jcrm ? 'n° jCRM à renseigner' : null].filter(Boolean);
         suivi = morceaux.join(' · ');
       }

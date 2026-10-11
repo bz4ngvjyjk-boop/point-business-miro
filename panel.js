@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=32';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches } from './engine.js?v=32';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=33';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches } from './engine.js?v=33';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
