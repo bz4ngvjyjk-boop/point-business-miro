@@ -37,7 +37,7 @@ export const GRIS_FOND = '#F1F2F4';
 export const G = {
   cardW: 176, cardH: 38, gapX: 10, gapY: 6, maxRows: 25,   // 25 dossiers max par colonne
   frameW: 2970, frameH: 2100, margin: 40, top: 150,   // top = titre + en-têtes de section
-  sectionPad: 12, sectionGap: 20, hdrH: 64, barH: 10,
+  sectionPad: 12, sectionGap: 20, hdrH: 64, barH: 20,
 };
 
 export const ZONE1_TITLE = '1 · Avancement avant-vente par pilote';

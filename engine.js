@@ -7,7 +7,7 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=5';
+} from './config.js?v=6';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -120,8 +120,11 @@ export async function saveDossier(d, itemId) {
   if (!f) throw new Error("Board non initialisé : clique d'abord sur « Préparer le board ».");
   let item;
   const meta = { role: 'dossier', ...d, maj: new Date().toISOString() };
+  const pilotes = new Set([d.pilote]);
   if (itemId) {
     item = await board().getById(itemId);
+    const avant = cache.get(itemId);
+    if (avant?.pilote) pilotes.add(avant.pilote);
     item.content = contenu(d);
     item.style = { ...item.style, ...cardStyle(d) };
     await item.sync();
@@ -129,13 +132,14 @@ export async function saveDossier(d, itemId) {
   } else {
     item = await creer(f, 'shape', { shape: 'rectangle', content: contenu(d), width: G.cardW, height: G.cardH, style: cardStyle(d) }, meta);
   }
-  await layout();
+  await layout({ pilotes });
   return item;
 }
 
 export async function deleteDossier(itemId) {
+  const pilote = cache.get(itemId)?.pilote;
   await remove(await board().getById(itemId));
-  await layout();
+  await layout(pilote ? { pilotes: new Set([pilote]) } : {});
 }
 
 export async function readDossier(item) {
@@ -166,13 +170,14 @@ export async function importDossiers(list, onProgress) {
 }
 
 // ══ RANGEMENT GÉNÉRAL ══
+// Un seul rangement à la fois : une demande arrivée pendant un rangement est rejouée juste après.
 let enCours = null;
-export async function layout() {
-  if (enCours) return enCours;               // un seul rangement à la fois
-  enCours = layoutInterne().finally(() => { enCours = null; });
+export async function layout(opts = {}) {
+  while (enCours) await enCours.catch(() => {});
+  enCours = layoutInterne(opts).finally(() => { enCours = null; });
   return enCours;
 }
-async function layoutInterne() {
+async function layoutInterne({ pilotes = null } = {}) {
   const t0 = performance.now();
   const snap = await snapshot();
   const f1 = findFrame(snap.frames, 'Avancement avant-vente');
@@ -184,7 +189,7 @@ async function layoutInterne() {
   const vivants = snap.items.filter((x) => x.meta);
   const dossiers = vivants.filter((x) => x.meta.role === 'dossier');
 
-  const H = await layoutZone1(f1, vivants, dossiers);
+  const H = await layoutZone1(f1, vivants, dossiers, pilotes);
   const top1 = f1.y - f1.height / 2;
   const f2 = await layoutZone2(snap, f1, vivants, dossiers, H, top1);
   await layoutZone3(snap, f2, vivants, dossiers, H, top1);
@@ -192,7 +197,8 @@ async function layoutInterne() {
 }
 
 // ── Zone 1 : sections par pilote, 25 dossiers max par colonne ──
-async function layoutZone1(f, vivants, dossiers) {
+const largeurs = new Map();          // largeur de chaque section au dernier rangement
+async function layoutZone1(f, vivants, dossiers, pilotes) {
   const dans = vivants.filter((x) => inFrame(f, x.item));
   const rows = G.maxRows;
   const secH = G.hdrH + G.barH + 8 + rows * (G.cardH + G.gapY) + G.sectionPad;
@@ -220,10 +226,15 @@ async function layoutZone1(f, vivants, dossiers) {
     const cols = Math.max(1, Math.ceil(list.length / rows));
     return { p, list, w: cols * (G.cardW + G.gapX) - G.gapX + 2 * G.sectionPad };
   });
+  // Rangement partiel (ajout / modif / suppression) : seulement la section du pilote concerné,
+  // sauf si une largeur de section change (nouvelle colonne) -> toute la zone 1.
+  const complet = !pilotes || secs.some((x) => largeurs.get(x.p.code) !== x.w);
+  const actif = (code) => complet || pilotes.has(code);
+  secs.forEach((x) => largeurs.set(x.p.code, x.w));
   const contentW = secs.reduce((s, x) => s + x.w, 0) + G.sectionGap * (secs.length - 1);
   const frameW = Math.max(G.frameW, contentW + 2 * G.margin);
   const top = f.y - f.height / 2, left = f.x - f.width / 2;
-  await resizeFrame(f, Math.max(f.width, frameW), Math.max(f.height, frameH), top, left);
+  if (complet) await resizeFrame(f, Math.max(f.width, frameW), Math.max(f.height, frameH), top, left);
 
   const syncs = [];
   const push = (p) => { if (p) syncs.push(p); };
@@ -234,6 +245,7 @@ async function layoutZone1(f, vivants, dossiers) {
   let x0 = (frameW - contentW) / 2;
   for (const s of secs) {
     const left0 = x0;
+    if (!actif(s.p.code)) { x0 += s.w + G.sectionGap; continue; }
     const bg = dans.find((x) => x.meta.role === 'bg' && x.meta.pilote === s.p.code);
     const hdr = dans.find((x) => x.meta.role === 'hdr' && x.meta.pilote === s.p.code);
     if (bg) push(update(bg.item, f, left0 + s.w / 2, G.top - G.hdrH + secH / 2, { width: s.w, height: secH }));
@@ -288,8 +300,14 @@ async function layoutZone1(f, vivants, dossiers) {
     const p = update(it, f, l.x, l.y);
     if (p) s2.push(p);
   }
-  await Promise.all([...s2, ...[...barsExist.values(), ...losExist.values()].map(remove)]);
-  try { await resizeFrame(f, frameW, frameH, top, left); } catch (e) { console.warn('Réduction du cadre 1 reportée', e); }
+  // suppression des barres / losanges devenus inutiles, uniquement dans les sections rangées
+  const piloteDe = new Map(dossiers.map((d) => [d.item.id, d.meta.pilote]));
+  const aSuppr = [
+    ...[...barsExist.entries()].filter(([k]) => actif(k.split('|')[0])).map(([, it]) => it),
+    ...[...losExist.entries()].filter(([ref]) => !piloteDe.has(ref) || actif(piloteDe.get(ref))).map(([, it]) => it),
+  ];
+  await Promise.all([...s2, ...aSuppr.map(remove)]);
+  if (complet) { try { await resizeFrame(f, frameW, frameH, top, left); } catch (e) { console.warn('Réduction du cadre 1 reportée', e); } }
   return frameH;
 }
 
