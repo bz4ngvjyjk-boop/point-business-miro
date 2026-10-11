@@ -36,11 +36,28 @@
     .tache select, .tache input { width:100%; border:1px solid var(--line); border-radius:4px; padding:4px 3px; font:inherit; font-size:12px; background:#fff; }
     .tache .del { border:0; background:none; color:#c8341f; font-size:16px; cursor:pointer; padding:0; }
     .add { margin-top:4px; border:1px dashed var(--bleu); background:#fff; color:var(--bleu); border-radius:5px; padding:5px; width:100%; font:inherit; font-weight:700; cursor:pointer; }
+    .og { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); margin:12px 0 4px; }
+    .oi { display:grid; grid-template-columns: 1fr 26px 26px; gap:4px; align-items:center; background:#fff; border:1px solid var(--line); border-radius:5px; padding:5px 6px; margin-bottom:4px; }
+    .oi .t { font-weight:600; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .oi .m { font-size:11px; color:var(--mut); }
+    .oi button { border:1px solid var(--line); background:var(--soft); border-radius:4px; cursor:pointer; font-size:12px; padding:2px 0; }
     button:focus-visible, input:focus-visible { outline:2px solid var(--or); outline-offset:1px; }
   </style>
 </head>
 <body>
-  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v14</div>
+  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v15</div>
+  <div id="vueOrdre" hidden>
+    <h1 id="ordreTtl">Ordre de traitement</h1>
+    <div class="sub">Flèches pour changer l'ordre, puis « Enregistrer l'ordre ». La zone 3 suit cet ordre dans chaque case.</div>
+    <div id="ordreListe"></div>
+    <div class="row">
+      <button class="btn primary" id="ordreSave">Enregistrer l'ordre</button>
+      <button class="btn ghost" id="ordreAuto">Ordre automatique</button>
+    </div>
+    <div class="row"><button class="btn ghost" id="ordreRetour">← Retour au dossier</button></div>
+    <div class="status" id="ordreStatus"></div>
+  </div>
+  <div id="vueDossier">
   <h1 id="ttl">Nouveau dossier</h1>
   <div class="sub" id="sub">Clique une pastille sur le board pour la modifier.</div>
 
@@ -81,6 +98,7 @@
     </div>
   </div>
 
-  <script type="module" src="panel.js?v=14"></script>
+  </div>
+  <script type="module" src="panel.js?v=15"></script>
 </body>
 </html>

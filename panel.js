@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=14';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe } from './engine.js?v=14';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=15';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV } from './engine.js?v=15';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -128,16 +128,64 @@ $('import').onclick = () => busy('Lecture du fichier d\'import…', async () => 
 
 // Sélection d'une pastille sur le board -> chargement de sa fiche
 // (pastille de la zone 1, ou carte de la zone 2 qui renvoie à sa pastille)
+// ── Vue « ordre de traitement » d'un avant-vente (clic sur un en-tête de la zone 3) ──
+let ordreAV = null, ordreListe = [];
+function afficherVue(ordre) { $('vueOrdre').hidden = !ordre; $('vueDossier').hidden = ordre; }
+function dessinerOrdre(list) {
+  const box = $('ordreListe');
+  box.innerHTML = '';
+  let groupe = null;
+  list.forEach((x, i) => {
+    if (x.horizon !== groupe) { groupe = x.horizon; box.insertAdjacentHTML('beforeend', `<div class="og">${groupe}</div>`); }
+    const ech = x.echeance ? ` · éch. ${x.echeance.slice(8, 10)}/${x.echeance.slice(5, 7)}` : '';
+    const row = document.createElement('div');
+    row.className = 'oi';
+    row.innerHTML = `<div><div class="t">${i + 1}. ${x.titre}</div><div class="m">${x.pilote} · ${x.livrable}${ech}</div></div>
+      <button type="button" title="Monter">▲</button><button type="button" title="Descendre">▼</button>`;
+    row.querySelector('.t').title = x.titre;
+    const [haut, bas] = row.querySelectorAll('button');
+    haut.disabled = i === 0; bas.disabled = i === list.length - 1;
+    haut.onclick = () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; dessinerOrdre(list); };
+    bas.onclick = () => { [list[i + 1], list[i]] = [list[i], list[i + 1]]; dessinerOrdre(list); };
+    box.appendChild(row);
+  });
+  if (!list.length) box.innerHTML = '<div class="sub">Aucun plan ni devis attendu pour cette ressource.</div>';
+  ordreListe = list;
+}
+async function ouvrirOrdre(av) {
+  ordreAV = av;
+  afficherVue(true);
+  $('ordreTtl').textContent = `Ordre de traitement · ${av}`;
+  $('ordreStatus').textContent = 'Chargement…';
+  dessinerOrdre(await tachesAV(av));
+  $('ordreStatus').textContent = '';
+}
+$('ordreRetour').onclick = () => afficherVue(false);
+$('ordreSave').onclick = async () => {
+  $('ordreStatus').textContent = 'Enregistrement…';
+  try { await enregistrerOrdreAV(ordreAV, ordreListe.map((x) => x.key)); $('ordreStatus').textContent = 'Ordre enregistré, zone 3 mise à jour.'; }
+  catch (e) { $('ordreStatus').textContent = e.message; }
+};
+$('ordreAuto').onclick = async () => {
+  $('ordreStatus').textContent = "Retour à l'ordre automatique…";
+  try { await enregistrerOrdreAV(ordreAV, []); dessinerOrdre(await tachesAV(ordreAV)); $('ordreStatus').textContent = 'Ordre automatique rétabli.'; }
+  catch (e) { $('ordreStatus').textContent = e.message; }
+};
+
 async function charger(items) {
   if (!items || items.length !== 1) return;
   let item = items[0];
+  if (item.type === 'shape') {
+    const m0 = await item.getMetadata('pbh').catch(() => null);
+    if (m0?.role === 'hdr3') { await ouvrirOrdre(m0.av); return; }
+  }
   if (item.type === 'card') {
     const m = await item.getMetadata('pbh').catch(() => null);
     if (!m || !['prio', 'av'].includes(m.role) || !m.ref) return;
     item = await miro.board.getById(m.ref).catch(() => null);
   }
   const d = await readDossier(item);
-  if (d) fill(d, item.id);
+  if (d) { afficherVue(false); fill(d, item.id); }
 }
 miro.board.ui.on('selection:update', ({ items }) => charger(items));
 
