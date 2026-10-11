@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=38';
+} from './config.js?v=39';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -408,13 +408,13 @@ async function layoutInterne({ pilotes = null } = {}) {
   const f2 = await layoutZone2(snap, f1, vivants, dossiers, H, top1);
   const f3 = await layoutZone3(snap, f2, vivants, dossiers, H, top1);
   try { await layoutZone4(snap, f3, vivants, dossiers, H, top1); } catch (e) { console.warn('Zone 4', e); }
-  try { await layoutGarde(snap, f1, vivants, top1); } catch (e) { console.warn('Page de garde', e); }
+  try { await layoutGarde(snap, f1, vivants, top1, H); } catch (e) { console.warn('Page de garde', e); }
   return { dossiers: dossiers.length, nettoyes: orphelins.length, mobiles, ms: Math.round(performance.now() - t0) };
 }
 
 // ── Page de garde (export PDF) : charte corporate — fond noir, bande orange à droite, logo blanc ──
 // Cotes reprises de la couverture PPTX (wt_objects.cover, diapo 33,87 × 19,05 cm) mises à l'échelle du cadre.
-const GARDE = { W: 2970, H: 1671, gap: 200 };
+const GARDE = { gap: 200 };   // hauteur = celle des zones, largeur au format 16:9
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 function dateReunion(now = new Date()) {   // lundi de la semaine en cours (le week-end : lundi suivant) + n° de semaine ISO
   const j = (now.getDay() + 6) % 7;                         // 0 = lundi … 6 = dimanche
@@ -424,19 +424,22 @@ function dateReunion(now = new Date()) {   // lundi de la semaine en cours (le w
   const sem = 1 + Math.round(((t - s1) / 864e5 - 3 + ((s1.getUTCDay() + 6) % 7)) / 7);
   return `${lundi.getDate()} ${MOIS[lundi.getMonth()]} ${lundi.getFullYear()} · S${sem}`.toUpperCase();
 }
-async function layoutGarde(snap, f1, vivants, top1) {
-  const cm = GARDE.W / 33.867, pt = GARDE.W / 960;           // échelle : cm et points de la diapo -> px du cadre
+async function layoutGarde(snap, f1, vivants, top1, H) {
+  const GH = H, GW = Math.round((H * 16) / 9);
+  const cm = GW / 33.867, pt = GW / 960;                     // échelle : cm et points de la diapo -> px du cadre
+  const left = f1.x - f1.width / 2 - GARDE.gap - GW;
   const ORANGE = '#FDB913';
   let f = findFrame(snap.frames, 'Page de garde');
   if (!f) {
-    f = await board().createFrame({ title: '0 · Page de garde', width: GARDE.W, height: GARDE.H, style: { fillColor: '#000000' },
-      x: f1.x - f1.width / 2 - GARDE.gap - GARDE.W / 2, y: top1 + GARDE.H / 2 });
+    f = await board().createFrame({ title: '0 · Page de garde', width: GW, height: GH, style: { fillColor: '#000000' },
+      x: left + GW / 2, y: top1 + GH / 2 });
   }
+  try { await resizeFrame(f, GW, GH, top1, left); } catch (e) { console.warn('Cadre page de garde', e); }
   const dans = vivants.filter((x) => inFrame(f, x.item));
   const texte = (size, bold) => ({ fillOpacity: 0, borderOpacity: 0, color: '#ffffff', fontSize: Math.round(size * pt),
     fontFamily: 'open_sans', textAlign: 'left', textAlignVertical: 'top' });
   const el = [
-    { k: 'bande', x: GARDE.W - 1.4 * cm, y: 0, w: 1.4 * cm, h: GARDE.H, style: { fillColor: ORANGE, borderOpacity: 0 } },
+    { k: 'bande', x: GW - 1.4 * cm, y: 0, w: 1.4 * cm, h: GH, style: { fillColor: ORANGE, borderOpacity: 0 } },
     { k: 'date', x: 4.85 * cm, y: 3.3 * cm, w: 22 * cm, h: 1.4 * cm, style: texte(20), content: `<p>${dateReunion()}</p>` },
     { k: 'trait1', x: 4.85 * cm, y: 5.5 * cm, w: 1.85 * cm, h: 2.5 * pt, style: { fillColor: ORANGE, borderOpacity: 0 } },
     { k: 'titre', x: 4.8 * cm, y: 6.3 * cm, w: 26 * cm, h: 2.6 * cm, style: texte(54), content: '<p><strong>RÉUNION COMMERCE</strong></p>' },
@@ -454,7 +457,7 @@ async function layoutGarde(snap, f1, vivants, top1) {
     if (p) syncs.push(p);
   }
   // logo blanc : 1 cm du bas, 3 cm de la droite, 12,7 × 2,8 cm
-  const lw = 12.7 * cm, lh = 2.8 * cm, lx = GARDE.W - 3 * cm - lw / 2, ly = GARDE.H - 1 * cm - lh / 2;
+  const lw = 12.7 * cm, lh = 2.8 * cm, lx = GW - 3 * cm - lw / 2, ly = GH - 1 * cm - lh / 2;
   let logo = dans.find((d) => d.meta.role === 'g0' && d.meta.k === 'logo');
   if (!logo) {
     const it = await board().createImage({ url: new URL('logo_weinmann_blanc.png', location.href).href, x: f.x, y: f.y, width: lw });
@@ -463,6 +466,7 @@ async function layoutGarde(snap, f1, vivants, top1) {
     cache.set(it.id, { role: 'g0', k: 'logo' });
     logo = { item: await board().getById(it.id) };
   }
+  if (Math.abs((logo.item.width || 0) - lw) > 1) { logo.item.width = lw; await syncSur(logo.item, f); }
   const pl = update(logo.item, f, lx, ly);
   if (pl) syncs.push(pl);
   await Promise.all(syncs);
