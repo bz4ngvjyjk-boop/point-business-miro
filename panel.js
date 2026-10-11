@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=4';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers } from './engine.js?v=4';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=5';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe } from './engine.js?v=5';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -29,8 +29,24 @@ const setSeg = (id, values) => $(id).querySelectorAll('button').forEach((b) =>
 seg('pilote', PILOTES.map((p) => ({ v: p.code, label: p.code })));
 seg('enjeu', ENJEUX.map((e) => ({ v: e.code, label: e.court, color: e.fill })));
 seg('priorite', PRIORITES.map((p) => ({ v: p, label: p })));
-seg('ressource', RESSOURCES.map((r) => ({ v: r, label: r })));
-seg('livrables', LIVRABLES.map((l) => ({ v: l, label: l })));
+// Section avant-vente : une ligne par tâche (ressource -> livrable -> priorité -> échéance)
+const opts = (list, val) => list.map((v) => `<option value="${v}"${v === val ? ' selected' : ''}>${v}</option>`).join('');
+function ligneTache(t = {}) {
+  const row = document.createElement('div');
+  row.className = 'tache';
+  row.innerHTML = `<select class="t-res"><option value="">—</option>${opts(RESSOURCES, t.ressource)}</select>
+    <select class="t-liv"><option value="">—</option>${opts(LIVRABLES, t.livrable)}</select>
+    <select class="t-pri">${opts(['P1', 'P2', 'P3', '—'], t.priorite || '—')}</select>
+    <input type="date" class="t-ech" value="${t.echeance || ''}">
+    <button type="button" class="del" title="Retirer cette ligne">×</button>`;
+  row.querySelector('.del').onclick = () => row.remove();
+  $('taches').appendChild(row);
+}
+$('addTache').onclick = () => ligneTache();
+const lireTaches = () => [...document.querySelectorAll('#taches .tache')].map((r) => ({
+  ressource: r.querySelector('.t-res').value, livrable: r.querySelector('.t-liv').value,
+  priorite: r.querySelector('.t-pri').value, echeance: r.querySelector('.t-ech').value || null,
+})).filter((t) => t.ressource || t.livrable);
 
 function status(msg, err = false) {
   $('status').textContent = msg;
@@ -43,9 +59,9 @@ function fill(d, id) {
   setSeg('pilote', d?.pilote);
   setSeg('enjeu', d?.enjeu || 'Q');
   setSeg('priorite', d?.priorite || '—');
-  setSeg('ressource', d?.ressource || []);
-  setSeg('livrables', d?.livrables || []);
-  $('echeance').value = d?.echeance || '';
+  $('taches').innerHTML = '';
+  const ts = d ? tachesDe(d) : [];
+  (ts.length ? ts : [{}]).forEach(ligneTache);
   $('carsat').checked = !!d?.carsat;
   $('ttl').textContent = id ? 'Modifier le dossier' : 'Nouveau dossier';
   $('sub').textContent = id ? (d?.maj ? `Dernière mise à jour : ${new Date(d.maj).toLocaleString('fr-FR')}` : '') :
@@ -60,9 +76,7 @@ function collect() {
     pilote: getSeg('pilote')[0],
     enjeu: getSeg('enjeu')[0] || 'Q',
     priorite: getSeg('priorite')[0] || '—',
-    ressource: getSeg('ressource'),
-    livrables: getSeg('livrables'),
-    echeance: $('echeance').value || null,
+    taches: lireTaches(),
     carsat: $('carsat').checked,
   };
   if (!d.titre) throw new Error('Indique le client et le site.');

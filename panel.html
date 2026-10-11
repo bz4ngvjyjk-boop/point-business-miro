@@ -28,6 +28,14 @@
     .confirm.on { display:block; }
     .tools { border-top:1px solid var(--line); margin-top:18px; padding-top:10px; }
     .chk { display:flex; align-items:center; gap:6px; margin-top:12px; }
+    .av { margin-top:14px; border:1px solid var(--line); border-radius:6px; padding:8px; background:var(--soft); }
+    .av-ttl { font-weight:700; color:var(--bleu); margin-bottom:6px; }
+    .tache { display:grid; grid-template-columns: 70px 1fr 18px; grid-template-areas: "res liv del" "pri ech ech";
+      gap:4px; align-items:center; padding:6px; margin-bottom:6px; background:#fff; border:1px solid var(--line); border-radius:5px; }
+    .t-res { grid-area:res; } .t-liv { grid-area:liv; } .t-pri { grid-area:pri; } .t-ech { grid-area:ech; } .del { grid-area:del; }
+    .tache select, .tache input { width:100%; border:1px solid var(--line); border-radius:4px; padding:4px 3px; font:inherit; font-size:12px; background:#fff; }
+    .tache .del { border:0; background:none; color:#c8341f; font-size:16px; cursor:pointer; padding:0; }
+    .add { margin-top:4px; border:1px dashed var(--bleu); background:#fff; color:var(--bleu); border-radius:5px; padding:5px; width:100%; font:inherit; font-weight:700; cursor:pointer; }
     button:focus-visible, input:focus-visible { outline:2px solid var(--or); outline-offset:1px; }
   </style>
 </head>
@@ -40,11 +48,13 @@
 
   <label>Pilote</label><div class="seg" id="pilote"></div>
   <label>Enjeu</label><div class="seg" id="enjeu"></div>
-  <label>Priorité</label><div class="seg" id="priorite"></div>
-  <label>Ressource (avant-vente)</label><div class="seg" id="ressource" data-multi="1"></div>
-  <label>Livrables</label><div class="seg" id="livrables" data-multi="1"></div>
-  <label for="echeance">Échéance client</label>
-  <input type="date" id="echeance">
+  <label>Priorité commerciale (zone 2)</label><div class="seg" id="priorite"></div>
+
+  <div class="av">
+    <div class="av-ttl">Avant-vente</div>
+    <div id="taches"></div>
+    <button type="button" class="add" id="addTache">+ Ajouter une ressource</button>
+  </div>
   <div class="chk"><input type="checkbox" id="carsat"><label for="carsat" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)">Dossier CARSAT</label></div>
 
   <div class="row">
@@ -70,6 +80,6 @@
     </div>
   </div>
 
-  <script type="module" src="panel.js?v=4"></script>
+  <script type="module" src="panel.js?v=5"></script>
 </body>
 </html>

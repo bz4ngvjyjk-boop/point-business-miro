@@ -7,13 +7,25 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=4';
+} from './config.js?v=5';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
 const ordreEnjeu = (c) => ENJEUX.findIndex((e) => e.code === c);
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const r1 = (v) => Math.round(v);
+
+// ── Tâches avant-vente : [{ ressource, livrable, priorite, echeance }] ──
+// Les anciennes fiches (ressource[] + livrables[] + echeance) sont converties à la lecture.
+export function tachesDe(m) {
+  if (Array.isArray(m.taches)) return m.taches;
+  const L = m.livrables || [];
+  const liv = L.includes('plan + devis') || (L.includes('plan') && L.includes('devis')) ? 'plan + devis'
+    : L.includes('plan') ? 'plan' : L.includes('devis') ? 'devis' : (L[0] || '');
+  const res = (m.ressource || []).length ? m.ressource : (liv ? [''] : []);
+  return res.map((r) => ({ ressource: r, livrable: liv, priorite: m.priorite && m.priorite !== 'Autres' ? m.priorite : '—', echeance: m.echeance || null }));
+}
+const echeanceMin = (m) => tachesDe(m).map((t) => t.echeance).filter(Boolean).sort()[0] || m.echeance || null;
 
 // ── Cache des métadonnées ──
 const cache = new Map();             // id -> meta (ou null si l'objet n'a pas de fiche)
@@ -154,7 +166,13 @@ export async function importDossiers(list, onProgress) {
 }
 
 // ══ RANGEMENT GÉNÉRAL ══
+let enCours = null;
 export async function layout() {
+  if (enCours) return enCours;               // un seul rangement à la fois
+  enCours = layoutInterne().finally(() => { enCours = null; });
+  return enCours;
+}
+async function layoutInterne() {
   const t0 = performance.now();
   const snap = await snapshot();
   const f1 = findFrame(snap.frames, 'Avancement avant-vente');
@@ -285,13 +303,11 @@ function alerte(echeance) {
   return null;
 }
 const theme = (m) => { const e = enjeu(m.enjeu); return e.fill === '#ffffff' ? '#9aa0a6' : e.fill; };
-const echTxt = (m) => (m.echeance ? ` · éch. ${m.echeance.slice(8, 10)}/${m.echeance.slice(5, 7)}` : '');
+const echTxt = (m) => { const e = echeanceMin(m); return e ? ` · éch. ${e.slice(8, 10)}/${e.slice(5, 7)}` : ''; };
 function cardData2(m) {
-  const fields = [
-    ...(m.ressource || []).map((r) => ({ value: r, fillColor: OR, textColor: BLEU })),
-    ...(m.livrables || []).map((l) => ({ value: l, fillColor: '#e3f4d6', textColor: '#245c12' })),
-  ];
-  const a = alerte(m.echeance);
+  const fields = tachesDe(m).filter((t) => t.ressource || t.livrable).map((t) => ({
+    value: [t.ressource, t.livrable].filter(Boolean).join(' · '), fillColor: t.ressource ? OR : '#e3f4d6', textColor: BLEU }));
+  const a = alerte(echeanceMin(m));
   if (a) fields.push(a);
   if (m.carsat) fields.push({ value: 'CARSAT', fillColor: CARSAT, textColor: '#ffffff' });
   return { title: esc(m.titre) + echTxt(m), style: { cardTheme: theme(m) }, fields };
@@ -358,7 +374,7 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
   COLONNES_PRIO.forEach((p, k) => {
     const left = G.margin + k * (colW + G2.colGap);
     const list = prio.filter((d) => d.meta.priorite === p).sort((a, b) =>
-      ordreEnjeu(a.meta.enjeu) - ordreEnjeu(b.meta.enjeu) || (a.meta.echeance || '9').localeCompare(b.meta.echeance || '9'));
+      ordreEnjeu(a.meta.enjeu) - ordreEnjeu(b.meta.enjeu) || (echeanceMin(a.meta) || '9').localeCompare(echeanceMin(b.meta) || '9'));
     for (const x of dans) {
       if (x.meta.col !== p) continue;
       if (x.meta.role === 'bg2') { const h = H - G2.top - G.margin + G.hdrH; push(update(x.item, f, left + colW / 2, G2.top - G.hdrH + h / 2, { width: colW, height: h })); }
@@ -384,12 +400,9 @@ function semaineISO(d) {
   const debut = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
   return t.getUTCFullYear() * 53 + Math.ceil(((t - debut) / 86400000 + 1) / 7);
 }
-function horizon(m) {
-  if (m.echeance) {
-    const delta = semaineISO(new Date(m.echeance)) - semaineISO(new Date());
-    return Math.max(0, Math.min(3, delta));
-  }
-  return { P1: 0, P2: 1, P3: 2 }[m.priorite] ?? 3;
+function horizon(t) {
+  if (t.echeance) return Math.max(0, Math.min(3, semaineISO(new Date(t.echeance)) - semaineISO(new Date())));
+  return { P1: 0, P2: 1, P3: 2 }[t.priorite] ?? 3;
 }
 
 async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
@@ -428,12 +441,12 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
   const cibles = [];
   const compte = Object.fromEntries(RESSOURCES.map((a) => [a, { plans: 0, devis: 0 }]));
   for (const d of dossiers) {
-    const livr = (d.meta.livrables || []).filter((l) => LIVRABLES_PLAN.includes(l) || LIVRABLES_DEVIS.includes(l));
-    if (!livr.length) continue;
-    for (const av of (d.meta.ressource || []).filter((a) => RESSOURCES.includes(a))) {
-      cibles.push({ d, av, r: horizon(d.meta), livr, key: `${d.item.id}|${av}` });
-      if (livr.some((l) => LIVRABLES_PLAN.includes(l))) compte[av].plans++;
-      if (livr.some((l) => LIVRABLES_DEVIS.includes(l))) compte[av].devis++;
+    for (const t of tachesDe(d.meta)) {
+      const av = t.ressource;
+      if (!RESSOURCES.includes(av) || !(LIVRABLES_PLAN.includes(t.livrable) || LIVRABLES_DEVIS.includes(t.livrable))) continue;
+      cibles.push({ d, t, av, r: horizon(t), livr: [t.livrable], key: `${d.item.id}|${av}|${t.livrable}` });
+      if (LIVRABLES_PLAN.includes(t.livrable)) compte[av].plans++;
+      if (LIVRABLES_DEVIS.includes(t.livrable)) compte[av].devis++;
     }
   }
   const exist = new Map(dans.filter((x) => x.meta.role === 'av').map((x) => [x.meta.key, x]));
@@ -442,9 +455,11 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
     const m = c.d.meta;
     const fields = [{ value: m.pilote, fillColor: BLEU, textColor: '#ffffff' },
       ...c.livr.map((l) => ({ value: l, fillColor: '#e3f4d6', textColor: '#245c12' }))];
-    const a = alerte(m.echeance);
+    if (c.t.priorite && c.t.priorite !== '—') fields.push({ value: c.t.priorite, fillColor: '#6b6f76', textColor: '#ffffff' });
+    const a = alerte(c.t.echeance);
     if (a) fields.push(a);
-    const data = { title: esc(m.titre) + echTxt(m), style: { cardTheme: theme(m) }, fields };
+    const ech = c.t.echeance ? ` · éch. ${c.t.echeance.slice(8, 10)}/${c.t.echeance.slice(5, 7)}` : '';
+    const data = { title: esc(m.titre) + ech, style: { cardTheme: theme(m) }, fields };
     const sig = JSON.stringify(data);
     let x = exist.get(c.key);
     if (!x) {
@@ -474,7 +489,7 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
     if (m.role === 'lab3') push(update(x.item, f, G.margin + G3.labelW / 2, rowY(m.r) + rowH / 2, { width: G3.labelW, height: rowH }));
     if (m.role === 'bg3') push(update(x.item, f, colX(RESSOURCES.indexOf(m.av)) + colW / 2, rowY(m.r) + rowH / 2, { width: colW, height: rowH }));
   }
-  const ordre = (a, b) => ordreEnjeu(a.d.meta.enjeu) - ordreEnjeu(b.d.meta.enjeu) || (a.d.meta.echeance || '9').localeCompare(b.d.meta.echeance || '9');
+  const ordre = (a, b) => (a.t.echeance || '9').localeCompare(b.t.echeance || '9') || ordreEnjeu(a.d.meta.enjeu) - ordreEnjeu(b.d.meta.enjeu);
   const s2 = [];
   for (const [j, av] of RESSOURCES.entries()) {
     for (let r = 0; r < 4; r++) {
