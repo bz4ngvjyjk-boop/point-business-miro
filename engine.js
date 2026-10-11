@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=49';
+} from './config.js?v=50';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -33,7 +33,7 @@ function tronque(t, budget) {
 const SIGLES = ['GC', 'CDC'];
 const nomLivrable = (l) => {
   if (!l) return l;
-  if (/appel d.offre/i.test(l)) return 'réponse ao';
+  if (/appel d.offre|^r[ée]ponse ao$/i.test(l)) return 'réponse AO';
   return SIGLES.includes(l.toUpperCase()) ? l.toUpperCase() : l.toLowerCase();
 };
 const renomme = (t) => (t.livrable && nomLivrable(t.livrable) !== t.livrable ? { ...t, livrable: nomLivrable(t.livrable) } : t);
@@ -245,7 +245,7 @@ const ENJEU_MOTS = { s: 'S', strat: 'S', strategique: 'S', e1: 'E1', e2: 'E2', e
   closing: 'C', c: 'C', signe: 'G', g: 'G' };
 const LIV_MOTS = [
   [/plan\s*\+\s*devis/, 'plan + devis'], [/plan\s*action/, 'plan action'], [/\bplan\b/, 'plan'], [/\bdevis\b/, 'devis'],
-  [/esquisse/, 'esquisse'], [/\bao\b|appel d.offre/, 'réponse ao'], [/enveloppe/, 'enveloppe'], [/\bcdc\b/, 'CDC'],
+  [/esquisse/, 'esquisse'], [/\bao\b|appel d.offre/, 'réponse AO'], [/enveloppe/, 'enveloppe'], [/\bcdc\b/, 'CDC'],
   [/\brdv\b/, 'rdv'], [/bercher/, 'bercher'], [/retrofit/, 'retrofit'], [/etude energ/, 'étude énergétique'], [/etude/, 'étude'],
   [/relance/, 'relance'], [/\b3d\b/, '3d'], [/carsat/, 'carsat'], [/\bgc\b/, 'GC'],
 ];
