@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM, PART_SCENARIOS,
-} from './config.js?v=29';
+} from './config.js?v=30';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -344,6 +344,26 @@ async function appliquerReprise(snap) {
   return n;
 }
 
+// Reprise des n° d'opportunité : texte « PBH-OPP: {"titre": id, ...} » déposé par script.
+// Ne complète que les fiches sans n° (jamais d'écrasement), puis le texte est supprimé.
+async function appliquerOpp(snap) {
+  const t = snap.items.find((x) => x.item.type === 'text' && (x.item.content || '').includes('PBH-OPP'));
+  if (!t) return 0;
+  let table;
+  try { table = JSON.parse(decodeHtml(t.item.content.replace(/<[^>]+>/g, '')).split('PBH-OPP:')[1].trim()); }
+  catch (e) { console.warn('PBH-OPP illisible', e); return 0; }
+  let n = 0;
+  for (const d of snap.items.filter((x) => x.meta?.role === 'dossier')) {
+    const id = table[d.meta.titre];
+    if (!id || d.meta.jcrm) continue;
+    await setMeta(d.item, { ...d.meta, jcrm: id });
+    n++;
+  }
+  await board().remove(t.item).catch(() => {});
+  console.log(`PBH-OPP : ${n} n° d'opportunité ajoutés`);
+  return n;
+}
+
 // ══ RANGEMENT GÉNÉRAL ══
 // Un seul rangement à la fois : une demande arrivée pendant un rangement est rejouée juste après.
 let enCours = null;
@@ -359,6 +379,7 @@ async function layoutInterne({ pilotes = null } = {}) {
   if (!f1) return null;
   // post-its de la boîte mobile : intégrés avant le rangement (rangement complet s'il y en a)
   try { if (await appliquerReprise(snap)) snap = await snapshot(); } catch (e) { console.warn('Reprise', e); }
+  try { if (await appliquerOpp(snap)) snap = await snapshot(); } catch (e) { console.warn('PBH-OPP', e); }
   let mobiles = 0;
   const BOITE_MOBILE_ACTIVE = false;   // saisie mobile abandonnée (décision 11/10) : code conservé, désactivé
   if (BOITE_MOBILE_ACTIVE && !pilotes) {

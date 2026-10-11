@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=29';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, trimestresAffiches } from './engine.js?v=29';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=30';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, trimestresAffiches } from './engine.js?v=30';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -68,7 +68,7 @@ function status(msg, err = false) {
   $('chasseTrim').innerHTML = opts.map((q) => `<option>${q}</option>`).join('');
 })();
 let chasseLe = null, suiviInitial = '', oppId = null;
-const JCRM_FICHE = 'https://crm.weinmann.fr/crm/index.php?page=opportunites-fiche&id=';
+const JCRM_FICHE = 'https://crm.weinmann.fr/index.php?page=opportunites-fiche&id=';
 // la date de saisie « (jj/mm) » est ajoutée au suivi quand le texte change (règle CRM : une info toujours datée)
 function suiviDate() {
   const t = $('suivi').value.trim();
