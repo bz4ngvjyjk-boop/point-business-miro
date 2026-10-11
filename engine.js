@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM, PART_SCENARIOS,
-} from './config.js?v=24';
+} from './config.js?v=25';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -867,7 +867,8 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
   // hauteur du cadre : 2 tableaux empilés (bords hauts alignés sur les autres zones)
   const hBloc = (n) => G4.bandeauH + G4.enteteH + Math.max(1, n) * G4.ligneH;
   const Hz = Math.max(H, G4.top + hBloc(blocs[0].length) + G4.blocGap + hBloc(blocs[1].length) + 60);
-  if (Hz > f.height) { try { await resizeFrame(f, Math.max(f.width, W), Hz, top1); } catch (e) { console.warn(e); } }
+  // élargir / agrandir AVANT de placer les cellules (Miro refuse un objet hors de son cadre)
+  if (Hz > f.height || W > f.width) { try { await resizeFrame(f, Math.max(f.width, W), Math.max(f.height, Hz), top1); } catch (e) { console.warn(e); } }
 
   // index des objets existants (clé logique -> objet)
   const exist = new Map(dans.filter((x) => x.meta.k4).map((x) => [x.meta.k4, x.item]));
@@ -952,7 +953,7 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
     reg = { item: await board().getById(it.id) };
   }
   const hFinal = Math.max(H, y + 40);
-  const fin = [update(reg.item, f, W / 2, hFinal - 26, { content: registre })];
+  const fin = [update(reg.item, f, W / 2, 40, { content: registre })];   // en haut du cadre, toujours dedans
   // anciens objets (cartes de la v22, lignes d'affaires sorties du tableau)
   const perimes = dans.filter((x) => (x.meta.role === 'chasse' || x.meta.role === 'bg4' || x.meta.role === 'hdr4'
     || (x.meta.k4 && !garder.has(x.item.id))));
