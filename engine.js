@@ -7,14 +7,23 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=15';
+} from './config.js?v=16';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
 const ordreEnjeu = (c) => ENJEUX.findIndex((e) => e.code === c);
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const r1 = (v) => Math.round(v);
-const tronque = (t, n) => (t.length > n ? t.slice(0, Math.max(1, n - 1)).trimEnd() + '…' : t);
+// Troncature selon la largeur approximative des lettres (majuscules plus larges) : titre sur une ligne
+const largeurCar = (c) => (/[A-ZÀ-ÖØ-Þ0-9MW@]/.test(c) ? 1.45 : /[ .,'\-]/.test(c) ? 0.55 : /[ijlrtf]/.test(c) ? 0.65 : 1);
+function tronque(t, budget) {
+  let w = 0;
+  for (let i = 0; i < t.length; i++) {
+    w += largeurCar(t[i]);
+    if (w > budget) return t.slice(0, Math.max(1, i - 1)).trimEnd() + '…';
+  }
+  return t;
+}
 
 // ── Tâches avant-vente : [{ ressource, livrable, priorite, echeance }] ──
 // Les anciennes fiches (ressource[] + livrables[] + echeance) sont converties à la lecture.
