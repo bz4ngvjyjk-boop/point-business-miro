@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=39';
+} from './config.js?v=40';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -434,7 +434,6 @@ async function layoutGarde(snap, f1, vivants, top1, H) {
     f = await board().createFrame({ title: '0 · Page de garde', width: GW, height: GH, style: { fillColor: '#000000' },
       x: left + GW / 2, y: top1 + GH / 2 });
   }
-  try { await resizeFrame(f, GW, GH, top1, left); } catch (e) { console.warn('Cadre page de garde', e); }
   const dans = vivants.filter((x) => inFrame(f, x.item));
   const texte = (size, bold) => ({ fillOpacity: 0, borderOpacity: 0, color: '#ffffff', fontSize: Math.round(size * pt),
     fontFamily: 'open_sans', textAlign: 'left', textAlignVertical: 'top' });
@@ -470,6 +469,9 @@ async function layoutGarde(snap, f1, vivants, top1, H) {
   const pl = update(logo.item, f, lx, ly);
   if (pl) syncs.push(pl);
   await Promise.all(syncs);
+  // le cadre est réduit APRÈS avoir replacé son contenu (Miro refuse un cadre plus petit que ses enfants)
+  try { await resizeFrame(f, GW, GH, f.y - f.height / 2, f.x - f.width / 2); await resizeFrame(f, GW, GH, top1, left); }
+  catch (e) { console.warn('Cadre page de garde', e); }
 }
 
 // ── Zone 1 : sections par pilote, 25 dossiers max par colonne ──
