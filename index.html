@@ -14,7 +14,7 @@
     const META = 'pbh';
     let ouvert = false;
     const ouvrir = async () => {
-      try { await miro.board.ui.openPanel({ url: 'panel.html?v=13' }); ouvert = true; }
+      try { await miro.board.ui.openPanel({ url: 'panel.html?v=14' }); ouvert = true; }
       catch (e) { /* panneau déjà ouvert */ ouvert = true; }
     };
     miro.board.ui.on('icon:click', ouvrir);

@@ -7,7 +7,7 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=13';
+} from './config.js?v=14';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -524,7 +524,6 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
     const m = c.d.meta;
     const fields = [{ value: m.pilote, fillColor: BLEU, textColor: '#ffffff' },
       ...c.livr.map((l) => ({ value: l, fillColor: '#e3f4d6', textColor: '#245c12' }))];
-    if (c.t.priorite && c.t.priorite !== '—') fields.push({ value: c.t.priorite, fillColor: '#6b6f76', textColor: '#ffffff' });
     const a = alerte(c.t.echeance);
     if (a) fields.push(a);
     const ech = c.t.echeance ? ` · éch. ${c.t.echeance.slice(8, 10)}/${c.t.echeance.slice(5, 7)}` : '';
@@ -558,7 +557,10 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
     if (m.role === 'lab3') push(update(x.item, f, G.margin + G3.labelW / 2, rowY(m.r) + rowH / 2, { width: G3.labelW, height: rowH }));
     if (m.role === 'bg3') push(update(x.item, f, colX(RESSOURCES.indexOf(m.av)) + colW / 2, rowY(m.r) + rowH / 2, { width: colW, height: rowH }));
   }
-  const ordre = (a, b) => (a.t.echeance || '9').localeCompare(b.t.echeance || '9') || ordreEnjeu(a.d.meta.enjeu) - ordreEnjeu(b.d.meta.enjeu);
+  // ordre de traitement : échéance la plus proche, puis priorité de la ligne, puis enjeu du dossier
+  const rangPrio = (p) => ({ P1: 0, P2: 1, P3: 2 }[p] ?? 3);
+  const ordre = (a, b) => (a.t.echeance || '9').localeCompare(b.t.echeance || '9')
+    || rangPrio(a.t.priorite) - rangPrio(b.t.priorite) || ordreEnjeu(a.d.meta.enjeu) - ordreEnjeu(b.d.meta.enjeu);
   const s2 = [];
   for (const [j, av] of RESSOURCES.entries()) {
     for (let r = 0; r < NH; r++) {
