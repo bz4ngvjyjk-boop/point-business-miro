@@ -7,13 +7,14 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=7';
+} from './config.js?v=8';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
 const ordreEnjeu = (c) => ENJEUX.findIndex((e) => e.code === c);
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const r1 = (v) => Math.round(v);
+const tronque = (t, n) => (t.length > n ? t.slice(0, Math.max(1, n - 1)).trimEnd() + '…' : t);
 
 // ── Tâches avant-vente : [{ ressource, livrable, priorite, echeance }] ──
 // Les anciennes fiches (ressource[] + livrables[] + echeance) sont converties à la lecture.
@@ -328,13 +329,14 @@ function cardData2(m) {
   const a = alerte(echeanceMin(m));
   if (a) fields.push(a);
   if (m.carsat) fields.push({ value: 'CARSAT', fillColor: CARSAT, textColor: '#ffffff' });
-  return { title: esc(m.titre) + echTxt(m), style: { cardTheme: theme(m) }, fields };
+  const ech = echTxt(m);
+  return { title: esc(tronque(m.titre, G2.titreMax - ech.length)) + ech, style: { cardTheme: theme(m) }, fields };
 }
 
 async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
   let f = findFrame(snap.frames, 'Gestion des priorités');
   if (!f) {
-    f = await board().createFrame({ title: ZONE2_TITLE, width: G.frameW, height: H, style: { fillColor: '#ffffff' },
+    f = await board().createFrame({ title: ZONE2_TITLE, width: 1600, height: H, style: { fillColor: '#ffffff' },
       x: f1.x + f1.width / 2 + 200 + G.frameW / 2, y: top1 + H / 2 });
   }
   if (H > f.height) await resizeFrame(f, f.width, H, top1);
@@ -352,7 +354,8 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
   }
   const cartes = dans.filter((x) => x.meta.role === 'prio');
   const parRef = new Map(cartes.map((x) => [x.meta.ref, x]));
-  const colW = (G.frameW - 2 * G.margin - 3 * G2.colGap) / 4;
+  const colW = G2.cardW + 2 * G2.cardPad;
+  const W2 = 2 * G.margin + 4 * colW + 3 * G2.colGap;
   const relX = (it) => (it.relativeTo === 'parent_top_left' ? it.x : it.x - (f.x - f.width / 2));
   const colOf = (rx) => COLONNES_PRIO[Math.max(0, Math.min(3, Math.floor((rx - G.margin) / (colW + G2.colGap))))];
 
@@ -398,15 +401,14 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
       if (x.meta.role === 'bg2') { const h = H - G2.top - G.margin + G.hdrH; push(update(x.item, f, left + colW / 2, G2.top - G.hdrH + h / 2, { width: colW, height: h })); }
       if (x.meta.role === 'hdr2') push(update(x.item, f, left + colW / 2, G2.top - G.hdrH / 2, { width: colW, height: G.hdrH, content: `<p><strong>${LIBELLE_PRIO[p]} · ${list.length}</strong></p>` }));
     }
-    const pad = (colW - 2 * G2.cardW - G2.cardGapX) / 2;
     list.forEach((d, i) => {
       const it = d.carte2.item;
-      const pr = update(it, f, left + pad + G2.cardW / 2 + (i % 2) * (G2.cardW + G2.cardGapX), G2.top + 20 + G2.rowStep / 2 + Math.floor(i / 2) * G2.rowStep);
+      const pr = update(it, f, left + G2.cardPad + G2.cardW / 2, G2.top + 16 + G2.rowStep / 2 + i * G2.rowStep);
       if (pr) push(pr); else if (d.carte2.modifie) push(it.sync());
     });
   });
   await Promise.all(syncs);
-  try { await resizeFrame(f, f.width, H, top1); } catch (e) { console.warn('Réduction du cadre 2 reportée', e); }
+  try { await resizeFrame(f, W2, H, top1, f1.x + f1.width / 2 + 200); } catch (e) { console.warn('Réduction du cadre 2 reportée', e); }
   return f;
 }
 
@@ -483,7 +485,7 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
     const a = alerte(c.t.echeance);
     if (a) fields.push(a);
     const ech = c.t.echeance ? ` · éch. ${c.t.echeance.slice(8, 10)}/${c.t.echeance.slice(5, 7)}` : '';
-    const data = { title: esc(m.titre) + ech, style: { cardTheme: theme(m) }, fields };
+    const data = { title: esc(tronque(m.titre, G3.titreMax - ech.length)) + ech, style: { cardTheme: theme(m) }, fields };
     const sig = JSON.stringify(data);
     let x = exist.get(c.key);
     if (!x) {
@@ -541,7 +543,7 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
     }
   }
   await Promise.all([...syncs, ...s2, ...[...debordements.values()].map(remove)]);
-  try { await resizeFrame(f, W, H, top1); } catch (e) { console.warn('Réduction du cadre 3 reportée', e); }
+  try { await resizeFrame(f, W, H, top1, f2.x + f2.width / 2 + 200); } catch (e) { console.warn('Réduction du cadre 3 reportée', e); }
 }
 
 export async function stats() {
