@@ -54,16 +54,19 @@
     .titreBox input { padding-right:56px; }
     #oppId { position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:12px; color:#9aa0a6; text-decoration:none; user-select:none; }
     #oppId:hover { color:#002060; text-decoration:underline; }
+      .prioRow { display:flex; align-items:center; gap:6px; }
+    .prioRow .seg { flex:1; }
+    #z2Btn { border:1px solid #f0b8ae; background:#fff4f2; color:#c8341f; border-radius:12px; width:26px; height:24px; font-size:13px; line-height:1; cursor:pointer; padding:0; }
+    #z2Btn:hover { background:#c8341f; color:#fff; }
   </style>
 </head>
 <body><div id="defil">
-  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v33</div>
+  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v34</div>
   <div id="vueOrdre" hidden>
     <h1 id="ordreTtl">Ordre de traitement</h1>
-    <div class="sub">Flèches pour changer l'ordre, puis « Enregistrer l'ordre ». La zone 3 suit cet ordre dans chaque case.</div>
+    <div class="sub">Flèches pour changer l'ordre : enregistrement automatique. La zone 3 suit cet ordre dans chaque case.</div>
     <div id="ordreListe"></div>
     <div class="row">
-      <button class="btn primary" id="ordreSave">Enregistrer l'ordre</button>
       <button class="btn ghost" id="ordreAuto">Ordre automatique</button>
     </div>
     <div class="row"><button class="btn ghost" id="ordreRetour">← Retour au dossier</button></div>
@@ -72,17 +75,18 @@
   <div id="vueDossier">
   <h1 id="ttl">Nouveau dossier</h1>
   <div class="sub" id="sub">Clique une pastille sur le board pour la modifier.</div>
-  <div class="confirm" id="confirmZ2">Retirer <strong id="z2t"></strong> de la zone 2 ?<br>
-    <span style="font-size:12px">La priorité repasse à « — » et les actions avant-vente sont supprimées. Le dossier reste en zone 1.</span>
-    <div class="row"><button class="btn danger" id="z2Yes">Oui, retirer</button><button class="btn ghost" id="z2No">Annuler</button></div>
-  </div>
-
   <label for="titre">Client · site</label>
   <div class="titreBox"><input type="text" id="titre" placeholder="ex. SCANIA Angers" autocomplete="off"><a id="oppId" target="_blank" rel="noopener" title="Ouvrir la fiche opportunité dans jCRM" hidden></a></div>
 
   <label>Pilote</label><div class="seg" id="pilote"></div>
   <label>Enjeu</label><div class="seg" id="enjeu"></div>
-  <label>Priorité commerciale (zone 2)</label><div class="seg" id="priorite"></div>
+  <label>Priorité commerciale (zone 2)</label>
+  <div class="prioRow"><div class="seg" id="priorite"></div><button type="button" id="z2Btn" title="Retirer de la zone 2 (priorité « — » et actions avant-vente supprimées)" hidden>✕</button></div>
+  <div class="confirm" id="confirmZ2">Retirer <strong id="z2t"></strong> de la zone 2 ?<br>
+    <span style="font-size:12px">La priorité repasse à « — » et les actions avant-vente sont supprimées. Le dossier reste en zone 1.</span>
+    <div class="row"><button class="btn danger" id="z2Yes">Oui, retirer</button><button class="btn ghost" id="z2No">Annuler</button></div>
+  </div>
+
 
   <div class="av">
     <div class="av-ttl">Avant-vente</div>
@@ -101,7 +105,6 @@
   <div class="chk"><input type="checkbox" id="carsat"><label for="carsat" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)">Dossier CARSAT</label></div>
 
   <div class="row">
-    <button class="btn primary" id="save">Enregistrer</button>
     <button class="btn ghost" id="reset">Nouveau</button>
   </div>
   <div class="row" id="delRow" hidden>
@@ -124,6 +127,6 @@
   </div>
 
   </div>
-  <script type="module" src="panel.js?v=33"></script>
+  <script type="module" src="panel.js?v=34"></script>
 </div></body>
 </html>

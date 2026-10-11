@@ -14,14 +14,14 @@
     const META = 'pbh';
     let ouvert = false;
     const ouvrir = async () => {
-      try { await miro.board.ui.openPanel({ url: 'panel.html?v=33' }); ouvert = true; }
+      try { await miro.board.ui.openPanel({ url: 'panel.html?v=34' }); ouvert = true; }
       catch (e) { /* panneau déjà ouvert */ ouvert = true; }
     };
     miro.board.ui.on('icon:click', ouvrir);
     miro.board.ui.on('selection:update', async ({ items }) => {
       if (items.length !== 1 || !['shape', 'card'].includes(items[0].type)) return;
       const m = await items[0].getMetadata(META).catch(() => null);
-      if (m && (['dossier', 'prio', 'av', 'hdr3', 'x2'].includes(m.role) || (m.role === 'ch4' && m.ref)) && !ouvert) await ouvrir();
+      if (m && (['dossier', 'prio', 'av', 'hdr3'].includes(m.role) || (m.role === 'ch4' && m.ref)) && !ouvert) await ouvrir();
     });
     miro.board.ui.on('panel:close', () => { ouvert = false; });
   </script>
