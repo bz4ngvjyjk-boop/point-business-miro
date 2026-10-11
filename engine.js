@@ -47,8 +47,8 @@ function cardStyle(d) {
   return {
     fillColor: e.fill, color: e.text, fontSize: 12, fontFamily: 'open_sans',
     textAlign: 'center', textAlignVertical: 'middle',
-    borderColor: d.carsat ? CARSAT : (e.fill === '#ffffff' ? '#1a1a1a' : '#ffffff'),
-    borderWidth: d.carsat ? 5 : 2, borderOpacity: 1,
+    borderColor: e.fill === '#ffffff' ? '#1a1a1a' : '#ffffff',
+    borderWidth: 2, borderOpacity: 1,
   };
 }
 
@@ -174,7 +174,13 @@ export async function layout() {
   const frame = await getZone1();
   if (!frame) return null;
   const nettoyes = await removeOrphans(frame);
-  const all = await zoneItems(frame);
+  let all = await zoneItems(frame);
+  // pilote ajouté au référentiel (ex. CD) : on crée sa section si elle manque
+  const manquants = PILOTES.filter((p) => !all.some((x) => x.meta.role === 'hdr' && x.meta.pilote === p.code));
+  if (manquants.length) {
+    for (const p of manquants) await createDecor(frame, p);
+    all = await zoneItems(frame);
+  }
   const dossiers = all.filter((x) => x.meta.role === 'dossier');
   const usableH = G.frameH - G.top - G.margin;
   const rows = Math.min(G.maxRows, Math.floor((usableH + G.gapY) / (G.cardH + G.gapY)));
@@ -193,11 +199,15 @@ export async function layout() {
   });
   const totalW = secs.reduce((s, x) => s + x.w, 0) + G.sectionGap * (secs.length - 1) + 2 * G.margin;
   const frameW = Math.max(G.frameW, totalW);
-  if (Math.round(frame.width) !== Math.round(frameW) || Math.round(frame.height) !== Math.round(frameH)) {
-    const top = frame.y - frame.height / 2;
-    frame.width = frameW; frame.height = frameH; frame.y = top + frameH / 2;
+  // Redimensionnement du cadre, bord haut-gauche fixe. Miro refuse de réduire un cadre tant que
+  // des objets dépassent : on agrandit d'abord si besoin, on réduit à la fin (après rangement).
+  const resize = async (w, h) => {
+    if (Math.round(frame.width) === Math.round(w) && Math.round(frame.height) === Math.round(h)) return;
+    const left = frame.x - frame.width / 2, top = frame.y - frame.height / 2;
+    frame.width = w; frame.height = h; frame.x = left + w / 2; frame.y = top + h / 2;
     await frame.sync();
-  }
+  };
+  await resize(Math.max(frame.width, frameW), Math.max(frame.height, frameH));
 
   const syncs = [];
   const moveTo = (item, rx, ry, w, h) => {
@@ -212,6 +222,7 @@ export async function layout() {
   const bars = all.filter((x) => x.meta.role === 'bar').map((x) => x.item);
   if (bars.length) await Promise.all(bars.map((b) => board().remove(b)));
 
+  const losanges = [];
   let x0 = (frameW - (totalW - 2 * G.margin)) / 2;
   const newBars = [];
   for (const s of secs) {
@@ -241,12 +252,23 @@ export async function layout() {
     // pastilles, en colonnes de haut en bas
     s.list.forEach((d, i) => {
       const c = Math.floor(i / rows), r = i % rows;
-      moveTo(d.item, left + G.sectionPad + G.cardW / 2 + c * (G.cardW + G.gapX),
-        G.top + G.barH + 8 + G.cardH / 2 + r * (G.cardH + G.gapY));
+      const rx = left + G.sectionPad + G.cardW / 2 + c * (G.cardW + G.gapX);
+      const ry = G.top + G.barH + 8 + G.cardH / 2 + r * (G.cardH + G.gapY);
+      // remet le style à jour si la fiche a changé (ex. ancienne bordure CARSAT)
+      const st = cardStyle(d.meta);
+      if (d.item.style.borderColor !== st.borderColor || d.item.style.fillColor !== st.fillColor
+        || Number(d.item.style.borderWidth) !== st.borderWidth) {
+        d.item.style = { ...d.item.style, ...st };
+        syncs.push(d.item.sync());
+      }
+      moveTo(d.item, rx, ry);
+      if (d.meta.carsat) losanges.push({ ref: d.item.id, x: rx + G.cardW / 2 - 11, y: ry + G.cardH / 2 - 9 });
     });
     x0 += s.w + G.sectionGap;
   }
   await Promise.all(syncs);
+  await placeLosanges(frame, all, losanges);
+  try { await resize(frameW, frameH); } catch (e) { console.warn('Réduction du cadre reportée', e); }
   await layoutZone2(frame, dossiers);
 
   for (const b of newBars) {
@@ -260,6 +282,29 @@ export async function layout() {
     await shp.sync();
   }
   return { dossiers: dossiers.length, nettoyes, ms: Math.round(performance.now() - t0) };
+}
+
+// Losange doré CARSAT : un petit objet par dossier CARSAT, posé au coin bas-droit de sa pastille.
+async function placeLosanges(frame, all, cibles) {
+  const exist = new Map(all.filter((x) => x.meta.role === 'carsat').map((x) => [x.meta.ref, x.item]));
+  const syncs = [];
+  for (const c of cibles) {
+    let it = exist.get(c.ref);
+    exist.delete(c.ref);
+    if (!it) {
+      it = await board().createShape({
+        shape: 'rhombus', content: '', width: 14, height: 14,
+        x: frame.x - frame.width / 2 + c.x, y: frame.y - frame.height / 2 + c.y,
+        style: { fillColor: CARSAT, borderColor: '#ffffff', borderWidth: 1, borderOpacity: 1 },
+      });
+      await it.setMetadata(META, { role: 'carsat', ref: c.ref });
+      await addToFrame(frame, it);
+      it = await board().getById(it.id);
+    }
+    place(it, frame, c.x, c.y);
+    syncs.push(it.sync());
+  }
+  await Promise.all([...syncs, ...[...exist.values()].map((it) => board().remove(it))]);
 }
 
 // ── Zone 2 : cartes priorisées, reflets des fiches (une carte par dossier priorisé) ──
@@ -354,7 +399,16 @@ async function layoutZone2(frame1, dossiers) {
   const orphans = mine.filter((c) => !keep.has(c.id));
   if (orphans.length) await Promise.all(orphans.map((c) => board().remove(c)));
 
-  // 3. Rangement des colonnes (2 cartes par ligne, tri par enjeu puis échéance)
+  // 3. Hauteur alignée sur la zone 1 (bords hauts alignés) ; réduction après rangement
+  const H = frame1.height;
+  const top1 = frame1.y - frame1.height / 2;
+  const resize2 = async (h) => {
+    if (Math.round(f.height) === Math.round(h) && Math.round(f.y - f.height / 2) === Math.round(top1)) return;
+    f.height = h; f.y = top1 + h / 2; await f.sync();
+  };
+  if (H > f.height) await resize2(H);
+
+  // 4. Rangement des colonnes (2 cartes par ligne, tri par enjeu puis échéance)
   const order = (c) => ENJEUX.findIndex((e) => e.code === c);
   const syncs = [];
   COLONNES_PRIO.forEach((p, k) => {
@@ -364,7 +418,7 @@ async function layoutZone2(frame1, dossiers) {
     decor.forEach((s, i) => {
       const m = decMeta[i];
       if (!m || m.col !== p) return;
-      if (m.role === 'bg2') { s.width = colW; s.height = G.frameH - G2.top - G.margin + G.hdrH; place(s, f, left + colW / 2, G2.top - G.hdrH + s.height / 2); }
+      if (m.role === 'bg2') { s.width = colW; s.height = H - G2.top - G.margin + G.hdrH; place(s, f, left + colW / 2, G2.top - G.hdrH + s.height / 2); }
       if (m.role === 'hdr2') { s.width = colW; s.height = G.hdrH; s.content = `<p><strong>${LIBELLE_PRIO[p]} · ${list.length}</strong></p>`; place(s, f, left + colW / 2, G2.top - G.hdrH / 2); }
       syncs.push(s.sync());
     });
@@ -376,6 +430,7 @@ async function layoutZone2(frame1, dossiers) {
     });
   });
   await Promise.all(syncs);
+  try { await resize2(H); } catch (e) { console.warn('Réduction de la zone 2 reportée', e); }
 }
 
 export async function stats() {

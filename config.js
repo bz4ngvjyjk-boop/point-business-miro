@@ -8,6 +8,7 @@ export const PILOTES = [
   { code: 'NB', nom: 'Nicolas B.' },
   { code: 'LR', nom: 'Lionel R.' },
   { code: 'FS', nom: 'François S.' },
+  { code: 'CD', nom: 'Cédric D.' },
 ];
 
 // Ordre = ordre de rangement dans une section (haut -> bas).
