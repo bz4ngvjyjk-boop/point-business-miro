@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=37';
+} from './config.js?v=38';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -416,8 +416,9 @@ async function layoutInterne({ pilotes = null } = {}) {
 // Cotes reprises de la couverture PPTX (wt_objects.cover, diapo 33,87 × 19,05 cm) mises à l'échelle du cadre.
 const GARDE = { W: 2970, H: 1671, gap: 200 };
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-function dateReunion(now = new Date()) {                    // lundi de la semaine en cours + n° de semaine ISO
-  const lundi = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+function dateReunion(now = new Date()) {   // lundi de la semaine en cours (le week-end : lundi suivant) + n° de semaine ISO
+  const j = (now.getDay() + 6) % 7;                         // 0 = lundi … 6 = dimanche
+  const lundi = new Date(now.getFullYear(), now.getMonth(), now.getDate() - j + (j >= 5 ? 7 : 0));
   const t = new Date(Date.UTC(lundi.getFullYear(), lundi.getMonth(), lundi.getDate() + 3));
   const s1 = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
   const sem = 1 + Math.round(((t - s1) / 864e5 - 3 + ((s1.getUTCDay() + 6) % 7)) / 7);
