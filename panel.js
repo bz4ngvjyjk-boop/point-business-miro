@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=43';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite } from './engine.js?v=43';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=44';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers } from './engine.js?v=44';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -300,10 +300,43 @@ function dessinerOrdre2(list) {
   if (!list.length) box.innerHTML = '<div class="sub">Aucun dossier dans cette colonne.</div>';
   ordreListe = list;
 }
+// Recherche d'un dossier à ajouter à la colonne affichée (zone 2)
+let catalogue = [];
+const sansAccents = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+function chercherZ2() {
+  const q = sansAccents($('z2Cherche').value.trim());
+  const box = $('z2Res');
+  box.innerHTML = '';
+  if (q.length < 2) return;
+  const res = catalogue.filter((d) => d.priorite !== ordreZ2 && sansAccents(d.titre).includes(q)).slice(0, 8);
+  if (!res.length) { box.innerHTML = '<div class="sub">Aucun dossier trouvé.</div>'; return; }
+  for (const d of res) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'z2r';
+    b.innerHTML = `<strong>${d.titre}</strong><span>${d.pilote}${d.priorite !== '—' ? ` · actuellement ${d.priorite}` : ''}</span>`;
+    b.onclick = async () => {
+      $('ordreStatus').textContent = `Ajout de « ${d.titre} »…`;
+      try {
+        await flushOrdre();
+        await changerPriorite(d.id, ordreZ2);
+        d.priorite = ordreZ2;
+        $('z2Cherche').value = ''; box.innerHTML = '';
+        dessinerOrdre2(await dossiersZone2(ordreZ2));
+        $('ordreStatus').textContent = `« ${d.titre} » ajouté en ${ordreZ2} (en tête de colonne).`;
+      } catch (e) { $('ordreStatus').textContent = e.message; }
+    };
+    box.appendChild(b);
+  }
+}
+$('z2Cherche').addEventListener('input', chercherZ2);
 async function ouvrirOrdre2(col) {
   await flushOrdre();
   ordreZ2 = col;
   afficherVue(true);
+  $('z2Ajout').hidden = false;
+  $('z2Cherche').value = ''; $('z2Res').innerHTML = '';
+  tousDossiers().then((l) => { catalogue = l; });
   $('ordreTtl').textContent = `Ordre · ${col === 'Autres' ? 'Autres' : `Priorité ${col.slice(1)}`}`;
   $('ordreStatus').textContent = 'Chargement…';
   dessinerOrdre2(await dossiersZone2(col));
@@ -312,6 +345,7 @@ async function ouvrirOrdre2(col) {
 async function ouvrirOrdre(av) {
   await flushOrdre();
   ordreZ2 = null;
+  $('z2Ajout').hidden = true;
   ordreAV = av;
   afficherVue(true);
   $('ordreTtl').textContent = `Ordre de traitement · ${av}`;

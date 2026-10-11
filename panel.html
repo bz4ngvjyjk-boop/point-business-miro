@@ -58,13 +58,22 @@
     .prioRow .seg { flex:1; }
     #z2Btn { border:1px solid #f0b8ae; background:#fff4f2; color:#c8341f; border-radius:12px; width:26px; height:24px; font-size:13px; line-height:1; cursor:pointer; padding:0; }
     #z2Btn:hover { background:#c8341f; color:#fff; }
+    #z2Ajout { margin:8px 0; }
+    #z2Cherche { width:100%; box-sizing:border-box; border:1px solid var(--line); border-radius:4px; padding:6px 8px; font:inherit; }
+    .z2r { display:block; width:100%; text-align:left; background:#fff; border:1px solid var(--line); border-radius:5px; padding:5px 8px; margin-top:4px; font:inherit; font-size:12px; cursor:pointer; }
+    .z2r:hover { border-color:var(--bleu); background:#f3f6fb; }
+    .z2r span { display:block; font-size:11px; color:var(--mut); }
   </style>
 </head>
 <body><div id="defil">
-  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v43</div>
+  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v44</div>
   <div id="vueOrdre" hidden>
     <h1 id="ordreTtl">Ordre de traitement</h1>
     <div class="sub">Flèches pour changer l'ordre, liste pour changer de ligne ou de colonne : enregistrement automatique.</div>
+    <div id="z2Ajout" hidden>
+      <input type="search" id="z2Cherche" placeholder="Rechercher un dossier à ajouter…" autocomplete="off">
+      <div id="z2Res"></div>
+    </div>
     <div id="ordreListe"></div>
     <div class="row">
       <button class="btn ghost" id="ordreAuto">Ordre automatique</button>
@@ -127,6 +136,6 @@
   </div>
 
   </div>
-  <script type="module" src="panel.js?v=43"></script>
+  <script type="module" src="panel.js?v=44"></script>
 </div></body>
 </html>

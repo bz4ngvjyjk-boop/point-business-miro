@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=43';
+} from './config.js?v=44';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -37,7 +37,7 @@ export function tachesDe(m) {
   const liv = L.includes('plan + devis') || (L.includes('plan') && L.includes('devis')) ? 'plan + devis'
     : L.includes('plan') ? 'plan' : L.includes('devis') ? 'devis' : (L[0] || '');
   const res = (m.ressource || []).length ? m.ressource : (liv ? [''] : []);
-  return res.map((r) => ({ ressource: r, livrable: liv, priorite: m.priorite && m.priorite !== 'Autres' ? m.priorite : '—', echeance: m.echeance || null }));
+  return res.map((r) => renomme({ ressource: r, livrable: liv, priorite: m.priorite && m.priorite !== 'Autres' ? m.priorite : '—', echeance: m.echeance || null }));
 }
 const echeanceMin = (m) => tachesDe(m).map((t) => t.echeance).filter(Boolean).sort()[0] || m.echeance || null;
 
@@ -634,6 +634,12 @@ export async function dossiersZone2(col) {
   const manuel = await ordreManuel2(col);
   return snap.items.filter((x) => x.meta?.role === 'dossier' && x.meta.priorite === col).sort((a, b) => triZone2(a, b, manuel))
     .map((x) => ({ id: x.item.id, titre: x.meta.titre, pilote: x.meta.pilote, enjeu: x.meta.enjeu, echeance: echeanceMin(x.meta) }));
+}
+// Tous les dossiers (recherche pour ajouter un dossier à une colonne de priorité)
+export async function tousDossiers() {
+  const snap = await snapshot();
+  return snap.items.filter((x) => x.meta?.role === 'dossier')
+    .map((x) => ({ id: x.item.id, titre: x.meta.titre, pilote: x.meta.pilote, priorite: x.meta.priorite || '—' }));
 }
 export async function enregistrerOrdre2(col, ids) {
   await board().setAppData(`ordre2_${col}`, ids);
