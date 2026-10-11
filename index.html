@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Point business hebdo</title>
+  <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
+</head>
+<body>
+  <!-- Point d'entrée « headless » chargé par Miro à l'ouverture du board :
+       - un clic sur l'icône de l'app ouvre le panneau de saisie ;
+       - un clic sur une pastille (zone 1) ou une carte (zone 2) de l'app ouvre aussi le panneau,
+         qui charge alors la fiche du dossier. -->
+  <script type="module">
+    const META = 'pbh';
+    let ouvert = false;
+    const ouvrir = async () => {
+      try { await miro.board.ui.openPanel({ url: 'panel.html' }); ouvert = true; }
+      catch (e) { /* panneau déjà ouvert */ ouvert = true; }
+    };
+    miro.board.ui.on('icon:click', ouvrir);
+    miro.board.ui.on('selection:update', async ({ items }) => {
+      if (items.length !== 1 || !['shape', 'card'].includes(items[0].type)) return;
+      const m = await items[0].getMetadata(META).catch(() => null);
+      if (m && (m.role === 'dossier' || m.role === 'prio') && !ouvert) await ouvrir();
+    });
+    miro.board.ui.on('panel:close', () => { ouvert = false; });
+  </script>
+</body>
+</html>

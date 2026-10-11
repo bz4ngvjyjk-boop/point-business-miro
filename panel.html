@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Dossier</title>
+  <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
+  <style>
+    :root { --bleu:#002060; --or:#FDB913; --ink:#1a1a1a; --mut:#5b6478; --line:#cfd5e2; --soft:#f4f6fa; }
+    * { box-sizing:border-box; }
+    [hidden] { display:none !important; }
+    body { margin:0; padding:14px; font:13px/1.4 "Open Sans","Segoe UI",Arial,sans-serif; color:var(--ink); }
+    h1 { font-size:18px; color:var(--bleu); margin:0 0 2px; }
+    .sub { color:var(--mut); font-size:12px; margin-bottom:12px; }
+    label { display:block; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--mut); margin:12px 0 4px; }
+    input[type=text], input[type=date] { width:100%; border:1px solid var(--line); border-radius:4px; padding:7px 8px; font:inherit; }
+    .seg { display:flex; flex-wrap:wrap; gap:4px; }
+    .seg button { border:1px solid var(--line); background:#fff; border-radius:12px; padding:3px 9px; font:inherit; font-size:12px; cursor:pointer; }
+    .seg button[aria-pressed=true] { background:var(--bleu); color:#fff; border-color:var(--bleu); }
+    .seg button i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; vertical-align:-1px; border:1px solid rgba(0,0,0,.2); }
+    .row { display:flex; gap:8px; margin-top:16px; }
+    .btn { flex:1; border:0; border-radius:5px; padding:9px; font:inherit; font-weight:700; cursor:pointer; }
+    .primary { background:var(--bleu); color:#fff; }
+    .ghost { background:var(--soft); color:var(--bleu); }
+    .danger { background:#fff; color:#c8341f; border:1px solid #f0b8ae; }
+    .status { margin-top:12px; font-size:12px; color:var(--mut); min-height:18px; }
+    .status.err { color:#c8341f; }
+    .confirm { display:none; margin-top:8px; padding:8px; background:#fff4f2; border:1px solid #f0b8ae; border-radius:5px; }
+    .confirm.on { display:block; }
+    .tools { border-top:1px solid var(--line); margin-top:18px; padding-top:10px; }
+    .chk { display:flex; align-items:center; gap:6px; margin-top:12px; }
+    button:focus-visible, input:focus-visible { outline:2px solid var(--or); outline-offset:1px; }
+  </style>
+</head>
+<body>
+  <h1 id="ttl">Nouveau dossier</h1>
+  <div class="sub" id="sub">Clique une pastille sur le board pour la modifier.</div>
+
+  <label for="titre">Client · site</label>
+  <input type="text" id="titre" placeholder="ex. SCANIA Angers" autocomplete="off">
+
+  <label>Pilote</label><div class="seg" id="pilote"></div>
+  <label>Enjeu</label><div class="seg" id="enjeu"></div>
+  <label>Priorité</label><div class="seg" id="priorite"></div>
+  <label>Ressource (avant-vente)</label><div class="seg" id="ressource" data-multi="1"></div>
+  <label>Livrables</label><div class="seg" id="livrables" data-multi="1"></div>
+  <label for="echeance">Échéance client</label>
+  <input type="date" id="echeance">
+  <div class="chk"><input type="checkbox" id="carsat"><label for="carsat" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)">Dossier CARSAT</label></div>
+
+  <div class="row">
+    <button class="btn primary" id="save">Enregistrer</button>
+    <button class="btn ghost" id="reset">Nouveau</button>
+  </div>
+  <div class="row" id="delRow" hidden>
+    <button class="btn danger" id="del">Supprimer ce dossier</button>
+  </div>
+  <div class="confirm" id="confirm">Supprimer définitivement ce dossier du board ?
+    <div class="row"><button class="btn danger" id="delYes">Oui, supprimer</button><button class="btn ghost" id="delNo">Annuler</button></div>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="tools">
+    <div class="row" style="margin-top:0">
+      <button class="btn ghost" id="init">Préparer le board</button>
+      <button class="btn ghost" id="relayout">Ranger</button>
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="import">Importer les dossiers (import.json)</button>
+    </div>
+  </div>
+
+  <script type="module" src="panel.js"></script>
+</body>
+</html>
