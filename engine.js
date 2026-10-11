@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=53';
+} from './config.js?v=54';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -488,14 +488,15 @@ async function layoutGarde(snap, f1, vivants, top1, H) {
 // ── Parking (au-dessus de la zone 2, SANS cadre : n'apparaît pas dans l'export PDF) ──
 // Dossiers à évoquer au prochain point, cochés « Parking » sur la fiche pendant la semaine.
 // Les post-its ou cartes posés à la main dans cette zone ne sont jamais touchés par l'app.
-const PK = { cols: 4, cardW: 320, gapX: 30, gapY: 12, hdrH: 70, pad: 20, marge: 60, cardH: 88 };
+const PK = { cols: 4, gapY: 12, hdrH: 70, pad: 20, marge: 60, cardH: 88, rangsMin: 3 };   // cartes alignées sur les colonnes de la zone 2
 async function layoutParking(f2, vivants, dossiers, top1) {
   const ref = { x: f2.x, y: f2.y, width: f2.width, height: f2.height };      // repère : coin haut-gauche de la zone 2
   const libres = vivants.filter((x) => ['pk', 'pkbg', 'pkt'].includes(x.meta.role));
   const cartes = new Map(libres.filter((x) => x.meta.role === 'pk').map((x) => [x.meta.ref, x]));
   const liste = dossiers.filter((d) => d.meta.parking).sort((a, b) => (a.meta.parkingLe || '').localeCompare(b.meta.parkingLe || ''));
-  const rangs = Math.max(1, Math.ceil(liste.length / PK.cols));
-  const W = G.margin * 2 + PK.cols * PK.cardW + (PK.cols - 1) * PK.gapX;
+  const rangs = Math.max(PK.rangsMin, Math.ceil(liste.length / PK.cols));   // zone réservée : 3 rangées au minimum
+  const W = f2.width;                                                       // même largeur que la zone 2
+  const pasX = G2.cardW + 2 * G2.cardPad + G2.colGap;
   const Hp = PK.hdrH + rangs * (PK.cardH + PK.gapY) + PK.pad;
   const haut = -PK.marge - Hp;                                                // relatif au haut de la zone 2
   const syncs = [];
@@ -506,7 +507,8 @@ async function layoutParking(f2, vivants, dossiers, top1) {
   };
   // fond pointillé orange + titre
   let bg = libres.find((x) => x.meta.role === 'pkbg')?.item;
-  if (!bg) { bg = await libre('shape', { shape: 'round_rectangle', content: '', width: W, height: Hp, style: { fillColor: '#fff8e1', borderColor: '#FDB913', borderStyle: 'dashed', borderWidth: 4 } }, { role: 'pkbg' }); await board().sendToBack(bg).catch(() => {}); }
+  if (bg && bg.shape !== 'rectangle') { await remove(bg); bg = null; }      // ancien fond à bords arrondis
+  if (!bg) { bg = await libre('shape', { shape: 'rectangle', content: '', width: W, height: Hp, style: { fillColor: '#fff8e1', borderColor: '#FDB913', borderStyle: 'dashed', borderWidth: 2 } }, { role: 'pkbg' }); await board().sendToBack(bg).catch(() => {}); }
   syncs.push(update(bg, ref, W / 2, haut + Hp / 2, { width: W, height: Hp }));
   let tt = libres.find((x) => x.meta.role === 'pkt')?.item;
   const titre = `<p><strong>🅿 Parking · à évoquer au prochain point</strong>${liste.length ? ` (${liste.length})` : ' — cocher « Parking » sur une fiche'}</p>`;
@@ -521,13 +523,13 @@ async function layoutParking(f2, vivants, dossiers, top1) {
       fields: [{ value: m.pilote, fillColor: BLEU, textColor: '#ffffff' }, { value: `parking${le}`, fillColor: '#fff1c2', textColor: '#7a5a00' }] };
     const sig = JSON.stringify(data);
     let c = cartes.get(d.item.id);
-    if (!c) { const it = await libre('card', { ...data, width: PK.cardW }, { role: 'pk', ref: d.item.id, sig }); c = { item: it, meta: { role: 'pk', ref: d.item.id, sig } }; }
+    if (!c) { const it = await libre('card', { ...data, width: G2.cardW }, { role: 'pk', ref: d.item.id, sig }); c = { item: it, meta: { role: 'pk', ref: d.item.id, sig } }; }
     else if (c.meta.sig !== sig) { c.item.title = data.title; c.item.style = { ...c.item.style, ...data.style }; c.item.fields = data.fields; await setMeta(c.item, { ...c.meta, sig }); }
     garder.add(c.item.id);
     const col = i % PK.cols, rang = Math.floor(i / PK.cols);
-    if (c.item.width && Math.abs(c.item.width - PK.cardW) > 1) c.item.width = PK.cardW;
+    if (c.item.width && Math.abs(c.item.width - G2.cardW) > 1) c.item.width = G2.cardW;
     const h = c.item.height || PK.cardH;
-    const p = update(c.item, ref, G.margin + col * (PK.cardW + PK.gapX) + PK.cardW / 2, haut + PK.hdrH + rang * (PK.cardH + PK.gapY) + h / 2);
+    const p = update(c.item, ref, G.margin + col * pasX + G2.cardPad + G2.cardW / 2, haut + PK.hdrH + rang * (PK.cardH + PK.gapY) + h / 2);
     syncs.push(p || c.item.sync().catch(() => {}));
   }
   await Promise.all([...syncs.filter(Boolean), ...libres.filter((x) => x.meta.role === 'pk' && !garder.has(x.item.id)).map((x) => remove(x.item))]);
