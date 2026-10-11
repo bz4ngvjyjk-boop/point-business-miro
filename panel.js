@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=45';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers } from './engine.js?v=45';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=46';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin } from './engine.js?v=46';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -321,11 +321,11 @@ function chercherZ2() {
       $('ordreStatus').textContent = `Ajout de « ${d.titre} »…`;
       try {
         await flushOrdre();
-        await changerPriorite(d.id, ordreZ2);
+        await ajouterEnFin(d.id, ordreZ2);
         d.priorite = ordreZ2;
         $('z2Cherche').value = ''; box.innerHTML = '';
         dessinerOrdre2(await dossiersZone2(ordreZ2));
-        $('ordreStatus').textContent = `« ${d.titre} » ajouté en ${ordreZ2} (en tête de colonne).`;
+        $('ordreStatus').textContent = `« ${d.titre} » ajouté en bas de ${ordreZ2}.`;
       } catch (e) { $('ordreStatus').textContent = e.message; }
     };
     box.appendChild(b);

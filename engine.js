@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=45';
+} from './config.js?v=46';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -643,6 +643,14 @@ export async function tousDossiers() {
 }
 export async function enregistrerOrdre2(col, ids) {
   await board().setAppData(`ordre2_${col}`, ids);
+  await layout({ pilotes: new Set() });
+}
+// Ajout depuis la recherche : le dossier arrive en BAS de la colonne (l'ordre affiché devient l'ordre manuel)
+export async function ajouterEnFin(id, col) {
+  const actuels = (await dossiersZone2(col)).map((x) => x.id).filter((x) => x !== id);
+  await board().setAppData(`ordre2_${col}`, [...actuels, id]);
+  const item = await board().getById(id);
+  await setMeta(item, { ...(await metaOf(item)), priorite: col, maj: new Date().toISOString() });
   await layout({ pilotes: new Set() });
 }
 export async function changerPriorite(id, col) {
