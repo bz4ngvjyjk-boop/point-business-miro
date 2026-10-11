@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=52';
+} from './config.js?v=53';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -696,7 +696,20 @@ export async function dossiersZone2(col) {
 export async function tousDossiers() {
   const snap = await snapshot();
   return snap.items.filter((x) => x.meta?.role === 'dossier')
-    .map((x) => ({ id: x.item.id, titre: x.meta.titre, pilote: x.meta.pilote, priorite: x.meta.priorite || '—' }));
+    .map((x) => ({ id: x.item.id, titre: x.meta.titre, pilote: x.meta.pilote, priorite: x.meta.priorite || '—', parking: !!x.meta.parking }));
+}
+// Parking : liste (ordre d'arrivée) et ajout / retrait
+export async function dossiersParking() {
+  const snap = await snapshot();
+  return snap.items.filter((x) => x.meta?.role === 'dossier' && x.meta.parking)
+    .sort((a, b) => (a.meta.parkingLe || '').localeCompare(b.meta.parkingLe || ''))
+    .map((x) => ({ id: x.item.id, titre: x.meta.titre, pilote: x.meta.pilote, parkingLe: x.meta.parkingLe || null }));
+}
+export async function mettreEnParking(id, on) {
+  const item = await board().getById(id);
+  const m = await metaOf(item);
+  await setMeta(item, { ...m, parking: on, parkingLe: on ? (m.parkingLe || new Date().toISOString().slice(0, 10)) : null, maj: new Date().toISOString() });
+  await layout({ pilotes: new Set() });
 }
 export async function enregistrerOrdre2(col, ids) {
   await board().setAppData(`ordre2_${col}`, ids);

@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=52';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin } from './engine.js?v=52';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=53';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin, dossiersParking, mettreEnParking } from './engine.js?v=53';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -250,7 +250,7 @@ $('import').onclick = () => busy('Lecture du fichier d\'import…', async () => 
 // Sélection d'une pastille sur le board -> chargement de sa fiche
 // (pastille de la zone 1, ou carte de la zone 2 qui renvoie à sa pastille)
 // ── Vue « ordre de traitement » d'un avant-vente (clic sur un en-tête de la zone 3) ──
-let ordreAV = null, ordreListe = [], ordreZ2 = null;   // ordreZ2 : colonne de priorité affichée (zone 2), sinon zone 3
+let ordreAV = null, ordreListe = [], ordreZ2 = null, vuePk = false;   // vuePk : liste du parking   // ordreZ2 : colonne de priorité affichée (zone 2), sinon zone 3
 function afficherVue(ordre) { $('vueOrdre').hidden = !ordre; $('vueDossier').hidden = ordre; }
 const LIGNES = ['Cette semaine', 'Plus tard'];
 function dessinerOrdre(list) {
@@ -324,13 +324,27 @@ function chercherZ2() {
   const box = $('z2Res');
   box.innerHTML = '';
   if (q.length < 2) return;
-  const res = catalogue.filter((d) => d.priorite !== ordreZ2 && sansAccents(d.titre).includes(q)).slice(0, 8);
+  const res = catalogue.filter((d) => (vuePk ? !d.parking : d.priorite !== ordreZ2) && sansAccents(d.titre).includes(q)).slice(0, 8);
   if (!res.length) { box.innerHTML = '<div class="sub">Aucun dossier trouvé.</div>'; return; }
   for (const d of res) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'z2r';
     b.innerHTML = `<strong>${d.titre}</strong><span>${d.pilote}${d.priorite !== '—' ? ` · actuellement ${d.priorite}` : ''}</span>`;
+    if (vuePk) {
+      b.onclick = async () => {
+        $('ordreStatus').textContent = `Ajout de « ${d.titre} » au parking…`;
+        try {
+          await mettreEnParking(d.id, true);
+          d.parking = true;
+          $('z2Cherche').value = ''; box.innerHTML = '';
+          dessinerParking(await dossiersParking());
+          $('ordreStatus').textContent = `« ${d.titre} » ajouté au parking.`;
+        } catch (e) { $('ordreStatus').textContent = e.message; }
+      };
+      box.appendChild(b);
+      continue;
+    }
     b.onclick = async () => {
       $('ordreStatus').textContent = `Ajout de « ${d.titre} »…`;
       try {
@@ -353,20 +367,55 @@ async function ouvrirFiche(id) {
   const it = await miro.board.getById(id).catch(() => null);
   const d = it && await readDossier(it);
   if (!d) return;
-  retourOrdre = ordreZ2 ? { z2: ordreZ2 } : { av: ordreAV };
+  retourOrdre = vuePk ? { pk: true } : ordreZ2 ? { z2: ordreZ2 } : { av: ordreAV };
   afficherVue(false);
   fill(d, id);
   $('retourOrdre').hidden = false;
-  $('retourOrdre').textContent = `← Retour à l'ordre ${ordreZ2 || ordreAV}`;
+  $('retourOrdre').textContent = vuePk ? '← Retour au parking' : `← Retour à l'ordre ${ordreZ2 || ordreAV}`;
 }
 $('retourOrdre').onclick = async () => {
   await flush();
   const r = retourOrdre;
   $('retourOrdre').hidden = true;
-  if (r?.z2) await ouvrirOrdre2(r.z2); else if (r?.av) await ouvrirOrdre(r.av);
+  if (r?.pk) await ouvrirParking(); else if (r?.z2) await ouvrirOrdre2(r.z2); else if (r?.av) await ouvrirOrdre(r.av);
 };
+// ── Vue « parking » (clic sur le titre de la zone parking) : recherche pour ajouter, liste -> fiche, ✕ pour retirer ──
+function dessinerParking(list) {
+  const box = $('ordreListe');
+  box.innerHTML = '';
+  list.forEach((x) => {
+    const le = x.parkingLe ? ` · depuis le ${x.parkingLe.slice(8, 10)}/${x.parkingLe.slice(5, 7)}` : '';
+    const row = document.createElement('div');
+    row.className = 'oi pk';
+    row.innerHTML = `<div><div class="t">${x.titre}</div><div class="m">${x.pilote}${le}</div></div>
+      <button type="button" title="Retirer du parking">✕</button>`;
+    row.querySelector('.t').title = `${x.titre} — cliquer pour ouvrir la fiche`;
+    row.querySelector('.t').onclick = () => ouvrirFiche(x.id);
+    row.querySelector('button').onclick = async () => {
+      $('ordreStatus').textContent = `Retrait de « ${x.titre} »…`;
+      try { await mettreEnParking(x.id, false); const c = catalogue.find((d) => d.id === x.id); if (c) c.parking = false;
+        dessinerParking(await dossiersParking()); $('ordreStatus').textContent = `« ${x.titre} » retiré du parking.`; }
+      catch (e) { $('ordreStatus').textContent = e.message; }
+    };
+    box.appendChild(row);
+  });
+  if (!list.length) box.innerHTML = '<div class="sub">Parking vide : recherche un dossier ci-dessus pour l\'ajouter.</div>';
+}
+async function ouvrirParking() {
+  await flushOrdre();
+  vuePk = true; ordreZ2 = null;
+  afficherVue(true);
+  $('z2Ajout').hidden = false; $('ordreAuto').hidden = true;
+  $('z2Cherche').value = ''; $('z2Res').innerHTML = '';
+  tousDossiers().then((l) => { catalogue = l; });
+  $('ordreTtl').textContent = 'Parking · à évoquer au prochain point';
+  $('ordreStatus').textContent = 'Chargement…';
+  dessinerParking(await dossiersParking());
+  $('ordreStatus').textContent = '';
+}
 async function ouvrirOrdre2(col) {
   await flushOrdre();
+  vuePk = false; $('ordreAuto').hidden = false;
   ordreZ2 = col;
   afficherVue(true);
   $('z2Ajout').hidden = false;
@@ -379,6 +428,7 @@ async function ouvrirOrdre2(col) {
 }
 async function ouvrirOrdre(av) {
   await flushOrdre();
+  vuePk = false; $('ordreAuto').hidden = false;
   ordreZ2 = null;
   $('z2Ajout').hidden = true;
   ordreAV = av;
@@ -434,6 +484,7 @@ async function charger(items) {
     const m0 = await item.getMetadata('pbh').catch(() => null);
     if (m0?.role === 'hdr3') { await ouvrirOrdre(m0.av); return; }
     if (m0?.role === 'hdr2') { await ouvrirOrdre2(m0.col); return; }
+    if (m0?.role === 'pkt') { await ouvrirParking(); return; }
     if (m0?.role === 'ch4' && m0.ref) item = await miro.board.getById(m0.ref).catch(() => null);   // ligne du tableau de chasse
   }
   if (item.type === 'card') {
