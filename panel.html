@@ -32,12 +32,12 @@
     .chk { display:flex; align-items:center; gap:6px; margin-top:12px; }
     .av { margin-top:14px; border:1px solid var(--line); border-radius:6px; padding:8px; background:var(--soft); }
     .av-ttl { font-weight:700; color:var(--bleu); margin-bottom:6px; }
-    .tache { display:grid; grid-template-columns: 70px 1fr 18px; grid-template-areas: "res liv del" "pri ech ech" "fait fait fait";
+    .tache { display:grid; grid-template-columns: 70px 1fr 18px; grid-template-areas: "res ech del" "liv liv liv" "fait fait fait";
       gap:4px; align-items:center; padding:6px; margin-bottom:6px; background:#fff; border:1px solid var(--line); border-radius:5px; }
     .t-fait { grid-area:fait; display:flex; justify-content:flex-start; align-items:center; gap:6px; margin:0; font-size:12px; text-transform:none; letter-spacing:0; font-weight:700; cursor:pointer; }
     .etat.ko { color:#c8341f; } .etat.ok { color:#1e8e4e; }
     .t-fait input, .okf input { width:auto !important; margin:0; }
-    .t-res { grid-area:res; } .t-liv { grid-area:liv; } .t-pri { grid-area:pri; } .t-ech { grid-area:ech; } .del { grid-area:del; }
+    .t-res { grid-area:res; } .t-liv { grid-area:liv; } .t-ech { grid-area:ech; } .del { grid-area:del; }
     .tache select, .tache input { width:100%; border:1px solid var(--line); border-radius:4px; padding:4px 3px; font:inherit; font-size:12px; background:#fff; }
     .tache .del { border:0; background:none; color:#c8341f; font-size:16px; cursor:pointer; padding:0; }
     .add { margin-top:4px; border:1px dashed var(--bleu); background:#fff; color:var(--bleu); border-radius:5px; padding:5px; width:100%; font:inherit; font-weight:700; cursor:pointer; }
@@ -71,7 +71,7 @@
   </style>
 </head>
 <body><div id="defil">
-  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v50</div>
+  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v51</div>
   <div id="vueOrdre" hidden>
     <h1 id="ordreTtl">Ordre de traitement</h1>
     <div class="sub">Flèches pour changer l'ordre, liste pour changer de ligne ou de colonne : enregistrement automatique.</div>
@@ -145,6 +145,6 @@
   </div>
 
   </div>
-  <script type="module" src="panel.js?v=50"></script>
+  <script type="module" src="panel.js?v=51"></script>
 </div></body>
 </html>

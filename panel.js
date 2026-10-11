@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=50';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin } from './engine.js?v=50';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=51';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin } from './engine.js?v=51';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -36,7 +36,6 @@ function ligneTache(t = {}) {
   row.className = 'tache';
   row.innerHTML = `<select class="t-res"><option value="">—</option>${opts(RESSOURCES, t.ressource)}</select>
     <select class="t-liv"><option value="">—</option>${opts(LIVRABLES, t.livrable)}</select>
-    <select class="t-pri">${opts(['P1', 'P2', 'P3', '—'], t.priorite || '—')}</select>
     <input type="date" class="t-ech" value="${t.echeance || ''}">
     <button type="button" class="del" title="Retirer cette ligne">×</button>
     <label class="t-fait" title="Cocher quand le livrable est traité"><input type="checkbox" class="t-ok"${t.fait ? ' checked' : ''}><span class="etat ${t.fait ? 'ok' : 'ko'}">${t.fait ? 'fait' : 'à faire'}</span></label>`;
@@ -49,7 +48,7 @@ function ligneTache(t = {}) {
 $('addTache').onclick = () => ligneTache();
 const lireTaches = () => [...document.querySelectorAll('#taches .tache')].map((r) => ({
   ressource: r.querySelector('.t-res').value, livrable: r.querySelector('.t-liv').value,
-  priorite: r.querySelector('.t-pri').value, echeance: r.querySelector('.t-ech').value || null,
+  echeance: r.querySelector('.t-ech').value || null,          // priorité : celle du dossier (zone 2)
   fait: r.querySelector('.t-ok').checked,
   faitLe: r.querySelector('.t-ok').checked ? (r.dataset.faitLe || new Date().toISOString().slice(0, 10)) : null,
 })).filter((t) => t.ressource || t.livrable);

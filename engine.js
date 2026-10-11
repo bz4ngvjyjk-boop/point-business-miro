@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=50';
+} from './config.js?v=51';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -789,10 +789,10 @@ function semaineISO(d) {
   const debut = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
   return t.getUTCFullYear() * 53 + Math.ceil(((t - debut) / 86400000 + 1) / 7);
 }
-// 0 = cette semaine (échéances dépassées comprises), 1 = plus tard ; sans échéance : P1 -> cette semaine
-function horizon(t) {
+// 0 = cette semaine (échéances dépassées comprises), 1 = plus tard ; sans échéance : dossier en P1 (zone 2) -> cette semaine
+function horizon(t, prio) {
   if (t.echeance) return semaineISO(new Date(t.echeance)) - semaineISO(new Date()) <= 0 ? 0 : 1;
-  return t.priorite === 'P1' ? 0 : 1;
+  return prio === 'P1' ? 0 : 1;
 }
 
 // Ordre manuel par avant-vente (enregistré sur le board) : liste de clés de tâches
@@ -810,7 +810,7 @@ async function lignesForcees(av) {
 }
 const rangPrio = (p) => ({ P1: 0, P2: 1, P3: 2 }[p] ?? 3);
 const ordreAuto = (a, b) => (a.t.echeance || '9').localeCompare(b.t.echeance || '9')
-  || rangPrio(a.t.priorite) - rangPrio(b.t.priorite) || ordreEnjeu(a.d.meta.enjeu) - ordreEnjeu(b.d.meta.enjeu);
+  || rangPrio(a.d.meta.priorite) - rangPrio(b.d.meta.priorite) || ordreEnjeu(a.d.meta.enjeu) - ordreEnjeu(b.d.meta.enjeu);
 function trier(list, manuel) {
   const idx = (c) => { const i = manuel.indexOf(c.key); return i < 0 ? Infinity : i; };
   return list.sort((a, b) => {
@@ -831,7 +831,7 @@ export async function tachesAV(av) {
     for (const t of tachesDe(d.meta)) {
       if (t.ressource !== av) continue;
       const key = cleTache(d.item.id, av, t.livrable);
-      const rAuto = horizon(t);
+      const rAuto = horizon(t, d.meta.priorite);
       list.push({ d, t, key, rAuto, r: forcees.has(key) ? forcees.get(key) : rAuto });
     }
   }
@@ -908,7 +908,7 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
       const av = t.ressource;
       if (!RESSOURCES.includes(av)) continue;                // toute action d'une ressource avant-vente
       const k0 = cleTache(d.item.id, av, t.livrable);
-      const r = forceesParAV[av].has(k0) ? forceesParAV[av].get(k0) : horizon(t);   // ligne forcée à la main
+      const r = forceesParAV[av].has(k0) ? forceesParAV[av].get(k0) : horizon(t, d.meta.priorite);   // ligne forcée à la main
       if (r >= NH) continue;                         // au-delà de S+1 : pas affiché
       cibles.push({ d, t, av, r, livr: [t.livrable], key: cleTache(d.item.id, av, t.livrable) });
       compte[av].actions++;
