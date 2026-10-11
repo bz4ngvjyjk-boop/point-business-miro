@@ -7,7 +7,7 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=10';
+} from './config.js?v=11';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -75,7 +75,19 @@ function update(item, f, rx, ry, patch = {}) {
   if (patch.fields) item.fields = patch.fields;
   if (rx !== null) place(item, f, rx, ry);
   const apres = JSON.stringify([r1(item.x), r1(item.y), r1(item.width || 0), r1(item.height || 0), item.content, item.title, item.style, item.fields]);
-  return avant === apres ? null : item.sync();
+  return avant === apres ? null : syncSur(item, f, rx, ry);
+}
+// Synchro tolérante : si Miro refuse la position, on retente dans l'autre repère (cadre / canevas),
+// sinon on l'ignore pour ne pas bloquer tout le rangement.
+async function syncSur(item, f, rx, ry) {
+  try { return await item.sync(); } catch (e) {
+    if (rx === null || rx === undefined) { console.warn('Synchro ignorée', item.id, e.message); return null; }
+    try {
+      const rel = item.x === rx && item.y === ry;
+      if (rel) { item.x = f.x - f.width / 2 + rx; item.y = f.y - f.height / 2 + ry; } else { item.x = rx; item.y = ry; }
+      return await item.sync();
+    } catch (e2) { console.warn('Déplacement ignoré', item.id, e2.message); return null; }
+  }
 }
 // Crée un objet de décor/reflet dans un cadre, avec sa fiche
 async function creer(f, kind, props, meta) {
@@ -235,7 +247,7 @@ async function layoutZone1(f, vivants, dossiers, pilotes) {
   const contentW = secs.reduce((s, x) => s + x.w, 0) + G.sectionGap * (secs.length - 1);
   const frameW = Math.max(G.frameW, contentW + 2 * G.margin);
   const top = f.y - f.height / 2, left = f.x - f.width / 2;
-  if (complet) await resizeFrame(f, Math.max(f.width, frameW), Math.max(f.height, frameH), top, left);
+  if (complet) { try { await resizeFrame(f, Math.max(f.width, frameW), Math.max(f.height, frameH), top, left); } catch (e) { console.warn(e); } }
 
   const syncs = [];
   const push = (p) => { if (p) syncs.push(p); };
@@ -343,7 +355,7 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
     f = await board().createFrame({ title: ZONE2_TITLE, width: 1600, height: H, style: { fillColor: '#ffffff' },
       x: f1.x + f1.width / 2 + 200 + G.frameW / 2, y: top1 + H / 2 });
   }
-  if (H > f.height) await resizeFrame(f, f.width, H, top1);
+  if (H > f.height) { try { await resizeFrame(f, f.width, H, top1); } catch (e) { console.warn(e); } }
   const dans = vivants.filter((x) => inFrame(f, x.item));
   for (const p of COLONNES_PRIO) {
     for (const role of ['bg2', 'hdr2']) {
@@ -408,7 +420,7 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
     list.forEach((d, i) => {
       const it = d.carte2.item;
       const pr = update(it, f, left + G2.cardPad + G2.cardW / 2, G2.top + 16 + G2.rowStep / 2 + i * G2.rowStep);
-      if (pr) push(pr); else if (d.carte2.modifie) push(it.sync());
+      if (pr) push(pr); else if (d.carte2.modifie) push(syncSur(it, f));
     });
   });
   await Promise.all(syncs);
@@ -436,7 +448,7 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
     f = await board().createFrame({ title: ZONE3_TITLE, width: G.frameW, height: H, style: { fillColor: '#ffffff' },
       x: f2.x + f2.width / 2 + 200 + G.frameW / 2, y: top1 + H / 2 });
   }
-  if (H > f.height) await resizeFrame(f, f.width, H, top1);
+  if (H > f.height) { try { await resizeFrame(f, f.width, H, top1); } catch (e) { console.warn(e); } }
   const NH = HORIZONS.length;
   // une seule colonne de cartes par avant-vente : largeur du cadre ajustée au contenu
   const colW = G3.cardW + 2 * G3.cardPad;
@@ -531,7 +543,7 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
         const rx = colX(j) + pad + G3.cardW / 2;
         const ry = rowY(r) + 8 + G3.rowStep / 2 + k * G3.rowStep;
         const p = update(c.x.item, f, rx, ry);
-        if (p) push(p); else if (c.x.modifie) push(c.x.item.sync());
+        if (p) push(p); else if (c.x.modifie) push(syncSur(c.x.item, f));
       });
       // indicateur « +n » si la case déborde
       const cle = `${av}|${r}`;
