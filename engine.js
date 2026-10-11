@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=36';
+} from './config.js?v=37';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -49,9 +49,10 @@ async function remove(item) { cache.delete(item.id); await board().remove(item).
 
 // Photo du board : toutes les formes et cartes avec leur fiche (lecture des fiches inconnues seulement)
 async function snapshot() {
-  const [shapes, cards, frames, texts] = await Promise.all([
-    board().get({ type: 'shape' }), board().get({ type: 'card' }), board().get({ type: 'frame' }), board().get({ type: 'text' })]);
-  const items = [...shapes, ...cards, ...texts];
+  const [shapes, cards, frames, texts, images] = await Promise.all([
+    board().get({ type: 'shape' }), board().get({ type: 'card' }), board().get({ type: 'frame' }), board().get({ type: 'text' }),
+    board().get({ type: 'image' })]);
+  const items = [...shapes, ...cards, ...texts, ...images];
   const inconnus = items.filter((i) => !cache.has(i.id));
   for (let k = 0; k < inconnus.length; k += 40) await Promise.all(inconnus.slice(k, k + 40).map(metaOf));
   return { items: items.map((item) => ({ item, meta: cache.get(item.id) })), frames };
@@ -407,7 +408,63 @@ async function layoutInterne({ pilotes = null } = {}) {
   const f2 = await layoutZone2(snap, f1, vivants, dossiers, H, top1);
   const f3 = await layoutZone3(snap, f2, vivants, dossiers, H, top1);
   try { await layoutZone4(snap, f3, vivants, dossiers, H, top1); } catch (e) { console.warn('Zone 4', e); }
+  try { await layoutGarde(snap, f1, vivants, top1); } catch (e) { console.warn('Page de garde', e); }
   return { dossiers: dossiers.length, nettoyes: orphelins.length, mobiles, ms: Math.round(performance.now() - t0) };
+}
+
+// ── Page de garde (export PDF) : charte corporate — fond noir, bande orange à droite, logo blanc ──
+// Cotes reprises de la couverture PPTX (wt_objects.cover, diapo 33,87 × 19,05 cm) mises à l'échelle du cadre.
+const GARDE = { W: 2970, H: 1671, gap: 200 };
+const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+function dateReunion(now = new Date()) {                    // lundi de la semaine en cours + n° de semaine ISO
+  const lundi = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+  const t = new Date(Date.UTC(lundi.getFullYear(), lundi.getMonth(), lundi.getDate() + 3));
+  const s1 = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  const sem = 1 + Math.round(((t - s1) / 864e5 - 3 + ((s1.getUTCDay() + 6) % 7)) / 7);
+  return `${lundi.getDate()} ${MOIS[lundi.getMonth()]} ${lundi.getFullYear()} · S${sem}`.toUpperCase();
+}
+async function layoutGarde(snap, f1, vivants, top1) {
+  const cm = GARDE.W / 33.867, pt = GARDE.W / 960;           // échelle : cm et points de la diapo -> px du cadre
+  const ORANGE = '#FDB913';
+  let f = findFrame(snap.frames, 'Page de garde');
+  if (!f) {
+    f = await board().createFrame({ title: '0 · Page de garde', width: GARDE.W, height: GARDE.H, style: { fillColor: '#000000' },
+      x: f1.x - f1.width / 2 - GARDE.gap - GARDE.W / 2, y: top1 + GARDE.H / 2 });
+  }
+  const dans = vivants.filter((x) => inFrame(f, x.item));
+  const texte = (size, bold) => ({ fillOpacity: 0, borderOpacity: 0, color: '#ffffff', fontSize: Math.round(size * pt),
+    fontFamily: 'open_sans', textAlign: 'left', textAlignVertical: 'top' });
+  const el = [
+    { k: 'bande', x: GARDE.W - 1.4 * cm, y: 0, w: 1.4 * cm, h: GARDE.H, style: { fillColor: ORANGE, borderOpacity: 0 } },
+    { k: 'date', x: 4.85 * cm, y: 3.3 * cm, w: 22 * cm, h: 1.4 * cm, style: texte(20), content: `<p>${dateReunion()}</p>` },
+    { k: 'trait1', x: 4.85 * cm, y: 5.5 * cm, w: 1.85 * cm, h: 2.5 * pt, style: { fillColor: ORANGE, borderOpacity: 0 } },
+    { k: 'titre', x: 4.8 * cm, y: 6.3 * cm, w: 26 * cm, h: 2.6 * cm, style: texte(54), content: '<p><strong>RÉUNION COMMERCE</strong></p>' },
+    { k: 'trait2', x: 4.85 * cm, y: 9.4 * cm, w: 1.85 * cm, h: 2 * pt, style: { fillColor: ORANGE, borderOpacity: 0 } },
+    { k: 'sous', x: 4.85 * cm, y: 9.7 * cm, w: 24 * cm, h: 1.4 * cm, style: texte(18), content: '<p>Point business hebdomadaire</p>' },
+  ];
+  const syncs = [];
+  for (const e of el) {
+    let x = dans.find((d) => d.meta.role === 'g0' && d.meta.k === e.k);
+    if (!x) {
+      const it = await creer(f, 'shape', { shape: 'rectangle', content: e.content || '', width: Math.max(8, e.w), height: Math.max(8, e.h), style: e.style }, { role: 'g0', k: e.k });
+      x = { item: it };
+    }
+    const p = update(x.item, f, e.x + e.w / 2, e.y + e.h / 2, { width: Math.max(8, e.w), height: Math.max(8, e.h), ...(e.content ? { content: e.content } : {}) });
+    if (p) syncs.push(p);
+  }
+  // logo blanc : 1 cm du bas, 3 cm de la droite, 12,7 × 2,8 cm
+  const lw = 12.7 * cm, lh = 2.8 * cm, lx = GARDE.W - 3 * cm - lw / 2, ly = GARDE.H - 1 * cm - lh / 2;
+  let logo = dans.find((d) => d.meta.role === 'g0' && d.meta.k === 'logo');
+  if (!logo) {
+    const it = await board().createImage({ url: new URL('logo_weinmann_blanc.png', location.href).href, x: f.x, y: f.y, width: lw });
+    await setMeta(it, { role: 'g0', k: 'logo' });
+    await addToFrame(f, it);
+    cache.set(it.id, { role: 'g0', k: 'logo' });
+    logo = { item: await board().getById(it.id) };
+  }
+  const pl = update(logo.item, f, lx, ly);
+  if (pl) syncs.push(pl);
+  await Promise.all(syncs);
 }
 
 // ── Zone 1 : sections par pilote, 25 dossiers max par colonne ──
