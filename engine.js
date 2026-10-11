@@ -7,7 +7,7 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=17';
+} from './config.js?v=18';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -211,6 +211,112 @@ async function restaurerPriorites(dossiers) {
   return n;
 }
 
+
+// ══ BOÎTE D'ENTRÉE MOBILE ══
+// Sur mobile, l'app ne tourne pas : on pose un post-it dans le cadre « À intégrer (mobile) ».
+// À l'ouverture du panneau (ordinateur), chaque post-it est lu, la fiche créée ou mise à jour,
+// puis le post-it est retiré. Une info par ligne, ordre libre (client en 1re ligne).
+const BOITE_TITRE = 'À intégrer (mobile)';
+const AIDE_BOITE = `<p><strong>Saisie depuis le mobile</strong> : poser un post-it dans ce cadre, une info par ligne.</p>
+<p>1re ligne : client · site — puis, dans l'ordre que vous voulez :</p>
+<p>pilote (AC, JAN, JD, NB, LR, FS, CD) · enjeu (Strat, E1, E2, E3, Q, Closing, Signé) · priorité (P1, P2, P3, Autres) · CARSAT</p>
+<p>une ligne par ressource : « PS plan 15/10 », « OP devis », « JAB AO 22/10 P1 »</p>
+<p>Le post-it est intégré et retiré à la prochaine ouverture de l'app sur ordinateur.</p>`;
+const ENJEU_MOTS = { s: 'S', strat: 'S', strategique: 'S', e1: 'E1', e2: 'E2', e3: 'E3', q: 'Q', qualif: 'Q',
+  closing: 'C', c: 'C', signe: 'G', g: 'G' };
+const LIV_MOTS = [
+  [/plan\s*\+\s*devis/, 'plan + devis'], [/plan\s*action/, 'Plan action'], [/\bplan\b/, 'plan'], [/\bdevis\b/, 'devis'],
+  [/esquisse/, 'esquisse'], [/\bao\b|appel d.offre/, "Réponse appel d'offre"], [/enveloppe/, 'enveloppe'], [/\bcdc\b/, 'CDC'],
+  [/\brdv\b/, 'RDV'], [/bercher/, 'BERCHER'], [/retrofit/, 'Retrofit'], [/etude/, 'étude'], [/relance/, 'relance'],
+];
+const sansAccent = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+function dateIso(txt) {
+  const m = txt.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+  if (!m) return null;
+  const now = new Date();
+  let y = m[3] ? Number(m[3].length === 2 ? '20' + m[3] : m[3]) : now.getFullYear();
+  let d = new Date(Date.UTC(y, Number(m[2]) - 1, Number(m[1])));
+  if (!m[3] && d < new Date(now.getTime() - 60 * 86400000)) d = new Date(Date.UTC(y + 1, Number(m[2]) - 1, Number(m[1])));
+  return isNaN(d) ? null : d.toISOString().slice(0, 10);
+}
+// Lecture d'un post-it -> { titre, pilote?, enjeu?, priorite?, carsat?, taches[] } ou { erreur }
+function lirePostit(html) {
+  const lignes = html.replace(/<\/p>|<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ').split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lignes.length) return { erreur: 'post-it vide' };
+  if (lignes.some((l) => l.startsWith('⚠'))) return { ignore: true };   // déjà signalé, en attente de correction
+  const r = { titre: lignes[0], taches: [] };
+  const codesPil = PILOTES.map((p) => p.code);
+  for (const brut of lignes.slice(1)) {
+    const l = sansAccent(brut), mots = brut.trim().split(/\s+/), premier = mots[0].toUpperCase();
+    if (mots.length === 1 && codesPil.includes(premier) && !r.pilote) { r.pilote = premier; continue; }
+    if (mots.length === 1 && ENJEU_MOTS[l]) { r.enjeu = ENJEU_MOTS[l]; continue; }
+    if (mots.length === 1 && /^(p[123]|autres)$/.test(l)) { r.priorite = l === 'autres' ? 'Autres' : l.toUpperCase(); continue; }
+    if (l === 'carsat') { r.carsat = true; continue; }
+    if (RESSOURCES.includes(premier) && mots.length > 1) {
+      const liv = LIV_MOTS.find(([re]) => re.test(l));
+      const pr = l.match(/\bp([123])\b/);
+      r.taches.push({ ressource: premier, livrable: liv ? liv[1] : '', priorite: pr ? `P${pr[1]}` : '—', echeance: dateIso(l) });
+      continue;
+    }
+    return { erreur: `ligne non comprise : « ${brut} »` };
+  }
+  return r;
+}
+
+async function boiteMobile(snap, f1) {
+  let fb = findFrame(snap.frames, BOITE_TITRE);
+  if (!fb) {
+    fb = await board().createFrame({ title: BOITE_TITRE, width: 1400, height: 700, style: { fillColor: '#FFF8E1' },
+      x: f1.x - f1.width / 2 + 700, y: f1.y + f1.height / 2 + 450 });
+    const aide = await board().createText({ content: AIDE_BOITE, x: fb.x, y: fb.y - 250, width: 1300, style: { fontSize: 16, color: '#002060' } });
+    await addToFrame(fb, aide);
+    return 0;
+  }
+  const postits = (await board().get({ type: 'sticky_note' })).filter((s) => inFrame(fb, s));
+  if (!postits.length) return 0;
+  const parTitre = new Map(snap.items.filter((x) => x.meta?.role === 'dossier').map((x) => [sansAccent(x.meta.titre), x]));
+  let n = 0;
+  for (const p of postits) {
+    const l = lirePostit(p.content || '');
+    if (l.ignore) continue;
+    const exist = l.titre ? parTitre.get(sansAccent(l.titre)) : null;
+    if (!l.erreur && !exist && !l.pilote) l.erreur = 'pilote manquant pour un nouveau dossier';
+    if (l.erreur) {
+      p.content = `${p.content}<p>⚠ ${esc(l.erreur)} — corriger puis supprimer cette ligne</p>`;
+      p.style = { ...p.style, fillColor: 'red' };
+      await p.sync().catch(() => {});
+      continue;
+    }
+    if (exist) {
+      const m = { ...exist.meta };
+      if (l.pilote) m.pilote = l.pilote;
+      if (l.enjeu) m.enjeu = l.enjeu;
+      if (l.priorite) m.priorite = l.priorite;
+      if (l.carsat) m.carsat = true;
+      const ts = [...tachesDe(m)];
+      for (const t of l.taches) {
+        const i = ts.findIndex((x) => x.ressource === t.ressource && x.livrable === t.livrable);
+        if (i >= 0) ts[i] = { ...ts[i], ...Object.fromEntries(Object.entries(t).filter(([, v]) => v && v !== '—')) };
+        else ts.push(t);
+      }
+      m.taches = ts;
+      m.maj = new Date().toISOString();
+      exist.item.style = { ...exist.item.style, ...cardStyle(m) };
+      await exist.item.sync().catch(() => {});
+      await setMeta(exist.item, m);
+    } else {
+      const d = { titre: l.titre, pilote: l.pilote, enjeu: l.enjeu || 'Q', priorite: l.priorite || '—',
+        taches: l.taches, carsat: !!l.carsat };
+      await creer(f1, 'shape', { shape: 'rectangle', content: contenu(d), width: G.cardW, height: G.cardH, style: cardStyle(d) },
+        { role: 'dossier', ...d, maj: new Date().toISOString() });
+    }
+    await board().remove(p).catch(() => {});
+    n++;
+  }
+  return n;
+}
+
 // ══ RANGEMENT GÉNÉRAL ══
 // Un seul rangement à la fois : une demande arrivée pendant un rangement est rejouée juste après.
 let enCours = null;
@@ -221,9 +327,15 @@ export async function layout(opts = {}) {
 }
 async function layoutInterne({ pilotes = null } = {}) {
   const t0 = performance.now();
-  const snap = await snapshot();
+  let snap = await snapshot();
   const f1 = findFrame(snap.frames, 'Avancement avant-vente');
   if (!f1) return null;
+  // post-its de la boîte mobile : intégrés avant le rangement (rangement complet s'il y en a)
+  let mobiles = 0;
+  if (!pilotes) {
+    try { mobiles = await boiteMobile(snap, f1); } catch (e) { console.warn('Boîte mobile', e); }
+    if (mobiles) snap = await snapshot();
+  }
 
   // Nettoyage : objets du cadre 1 sans fiche (écriture interrompue)
   const orphelins = snap.items.filter((x) => !x.meta && x.item.type === 'shape' && inFrame(f1, x.item));
@@ -236,7 +348,7 @@ async function layoutInterne({ pilotes = null } = {}) {
   const top1 = f1.y - f1.height / 2;
   const f2 = await layoutZone2(snap, f1, vivants, dossiers, H, top1);
   await layoutZone3(snap, f2, vivants, dossiers, H, top1);
-  return { dossiers: dossiers.length, nettoyes: orphelins.length, ms: Math.round(performance.now() - t0) };
+  return { dossiers: dossiers.length, nettoyes: orphelins.length, mobiles, ms: Math.round(performance.now() - t0) };
 }
 
 // ── Zone 1 : sections par pilote, 25 dossiers max par colonne ──
