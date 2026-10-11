@@ -65,10 +65,13 @@
     .z2r { display:block; width:100%; text-align:left; background:#fff; border:1px solid var(--line); border-radius:5px; padding:5px 8px; margin-top:4px; font:inherit; font-size:12px; cursor:pointer; }
     .z2r:hover { border-color:var(--bleu); background:#f3f6fb; }
     .z2r span { display:block; font-size:11px; color:var(--mut); }
+    .oppRow { display:flex; gap:6px; align-items:center; }
+    #oppSaisie { flex:1; border:1px solid var(--line); border-radius:4px; padding:5px 8px; font:inherit; }
+    #oppEdit { background:none; border:0; color:var(--bleu); font:inherit; font-size:12px; cursor:pointer; padding:0; }
   </style>
 </head>
 <body><div id="defil">
-  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v47</div>
+  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v48</div>
   <div id="vueOrdre" hidden>
     <h1 id="ordreTtl">Ordre de traitement</h1>
     <div class="sub">Flèches pour changer l'ordre, liste pour changer de ligne ou de colonne : enregistrement automatique.</div>
@@ -89,6 +92,9 @@
   <div class="sub" id="sub">Clique une pastille sur le board pour la modifier.</div>
   <label for="titre">Client · site</label>
   <div class="titreBox"><input type="text" id="titre" placeholder="ex. SCANIA Angers" autocomplete="off"><a id="oppId" target="_blank" rel="noopener" title="Ouvrir la fiche opportunité dans jCRM" hidden></a></div>
+  <label for="oppSaisie">Opportunité jCRM</label>
+  <div class="oppRow"><input type="number" id="oppSaisie" min="1" step="1" placeholder="n° d'opportunité (ex. 595)" autocomplete="off">
+    <button type="button" id="oppEdit" title="Modifier le n° d'opportunité" hidden>✎ modifier</button></div>
 
   <label>Pilote</label><div class="seg" id="pilote"></div>
   <label>Enjeu</label><div class="seg" id="enjeu"></div>
@@ -139,6 +145,6 @@
   </div>
 
   </div>
-  <script type="module" src="panel.js?v=47"></script>
+  <script type="module" src="panel.js?v=48"></script>
 </div></body>
 </html>

@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=47';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin } from './engine.js?v=47';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=48';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin } from './engine.js?v=48';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -68,6 +68,17 @@ function status(msg, err = false) {
   $('chasseTrim').innerHTML = opts.map((q) => `<option>${q}</option>`).join('');
 })();
 let chasseLe = null, suiviInitial = '', oppId = null;
+// N° d'opportunité : saisi une fois (champ « Opportunité jCRM »), puis affiché en lien grisé ; « ✎ modifier » pour corriger
+function afficherOpp(edition = false) {
+  $('oppId').hidden = !oppId;
+  if (oppId) { $('oppId').textContent = '#' + oppId; $('oppId').href = JCRM_FICHE + oppId; }
+  $('oppSaisie').hidden = !!oppId && !edition;
+  $('oppSaisie').value = oppId || '';
+  $('oppEdit').hidden = !oppId || edition;
+}
+$('oppEdit').onclick = () => { afficherOpp(true); $('oppSaisie').focus(); };
+$('oppSaisie').addEventListener('input', () => { const n = parseInt($('oppSaisie').value, 10); oppId = n > 0 ? n : null; });
+$('oppSaisie').addEventListener('change', () => afficherOpp(false));
 const JCRM_FICHE = 'https://crm.weinmann.fr/index.php?page=opportunites-fiche&id=';
 // la date de saisie « (jj/mm) » est ajoutée au suivi quand le texte change (règle CRM : une info toujours datée)
 function suiviDate() {
@@ -87,9 +98,8 @@ function fill(d, id) {
     $('chasseTrim').insertAdjacentHTML('afterbegin', `<option class="passe" value="${d.chasseTrim}">${d.chasseTrim} (passé)</option>`);
   }
   if (d?.chasseTrim) $('chasseTrim').value = d.chasseTrim; else $('chasseTrim').selectedIndex = 0;
-  oppId = d?.jcrm || null;                      // n° d'opportunité jCRM : affiché, non modifiable
-  $('oppId').hidden = !oppId;
-  if (oppId) { $('oppId').textContent = '#' + oppId; $('oppId').href = JCRM_FICHE + oppId; }
+  oppId = d?.jcrm || null;                      // n° d'opportunité jCRM : lien grisé à côté du nom
+  afficherOpp();
   suiviInitial = d?.suivi || '';
   $('suivi').value = suiviInitial.replace(/\s*\(\d{2}\/\d{2}\)$/, '');
   chasseLe = d?.chasseLe || null;
