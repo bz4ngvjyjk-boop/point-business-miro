@@ -7,7 +7,7 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=19';
+} from './config.js?v=20';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -585,10 +585,10 @@ function semaineISO(d) {
   const debut = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
   return t.getUTCFullYear() * 53 + Math.ceil(((t - debut) / 86400000 + 1) / 7);
 }
-// 0 = cette semaine (échéances dépassées comprises), 1 = S+1, au-delà : hors zone 3
+// 0 = cette semaine (échéances dépassées comprises), 1 = plus tard ; sans échéance : P1 -> cette semaine
 function horizon(t) {
-  if (t.echeance) return Math.max(0, semaineISO(new Date(t.echeance)) - semaineISO(new Date()));
-  return { P1: 0, P2: 1 }[t.priorite] ?? 9;
+  if (t.echeance) return semaineISO(new Date(t.echeance)) - semaineISO(new Date()) <= 0 ? 0 : 1;
+  return t.priorite === 'P1' ? 0 : 1;
 }
 
 // Ordre manuel par avant-vente (enregistré sur le board) : liste de clés de tâches
@@ -599,7 +599,7 @@ async function ordreManuel(av) { return (await ordreBrut(av)).map((e) => (typeof
 // lignes forcées à la main : clé -> 0 / 1 / 2
 async function lignesForcees(av) {
   const m = new Map();
-  for (const e of await ordreBrut(av)) if (e && typeof e === 'object' && Number.isInteger(e.r)) m.set(e.key, e.r);
+  for (const e of await ordreBrut(av)) if (e && typeof e === 'object' && Number.isInteger(e.r)) m.set(e.key, Math.min(e.r, HORIZONS.length - 1));
   return m;
 }
 const rangPrio = (p) => ({ P1: 0, P2: 1, P3: 2 }[p] ?? 3);
@@ -624,7 +624,7 @@ export async function tachesAV(av) {
     for (const t of tachesDe(d.meta)) {
       if (t.ressource !== av || !(LIVRABLES_PLAN.includes(t.livrable) || LIVRABLES_DEVIS.includes(t.livrable))) continue;
       const key = cleTache(d.item.id, av, t.livrable);
-      const rAuto = Math.min(horizon(t), HORIZONS.length);
+      const rAuto = horizon(t);
       list.push({ d, t, key, rAuto, r: forcees.has(key) ? forcees.get(key) : rAuto });
     }
   }
@@ -725,7 +725,8 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
       push(update(x.item, f, colX(j) + colW / 2, G3.top - G.hdrH / 2 - 8, { width: colW, height: G.hdrH,
         content: `<p><strong>${m.av}</strong> · ${k.plans} plan${k.plans > 1 ? 's' : ''} · ${k.devis} devis</p>` }));
     }
-    if (m.role === 'lab3') push(update(x.item, f, G.margin + G3.labelW / 2, rowY(m.r) + rowH / 2, { width: G3.labelW, height: rowH }));
+    if (m.role === 'lab3') push(update(x.item, f, G.margin + G3.labelW / 2, rowY(m.r) + rowH / 2, { width: G3.labelW, height: rowH,
+      content: `<p><strong>${HORIZONS[m.r]}</strong></p>` }));
     if (m.role === 'bg3') push(update(x.item, f, colX(RESSOURCES.indexOf(m.av)) + colW / 2, rowY(m.r) + rowH / 2, { width: colW, height: rowH }));
   }
   // ordre de traitement : ordre manuel s'il existe, sinon échéance, priorité de la ligne, enjeu

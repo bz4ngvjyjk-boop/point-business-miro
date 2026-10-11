@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=19';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV } from './engine.js?v=19';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=20';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV } from './engine.js?v=20';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -131,7 +131,7 @@ $('import').onclick = () => busy('Lecture du fichier d\'import…', async () => 
 // ── Vue « ordre de traitement » d'un avant-vente (clic sur un en-tête de la zone 3) ──
 let ordreAV = null, ordreListe = [];
 function afficherVue(ordre) { $('vueOrdre').hidden = !ordre; $('vueDossier').hidden = ordre; }
-const LIGNES = ['Cette semaine', 'S+1', 'Plus tard (hors zone 3)'];
+const LIGNES = ['Cette semaine', 'Plus tard'];
 function dessinerOrdre(list) {
   list.sort((a, b) => a.r - b.r);                   // regroupé par ligne, ordre conservé dans chaque groupe
   const box = $('ordreListe');
@@ -144,7 +144,7 @@ function dessinerOrdre(list) {
     row.className = 'oi';
     const forcee = x.r !== x.rAuto ? ' · <b>ligne choisie</b>' : '';
     row.innerHTML = `<div><div class="t">${i + 1}. ${x.titre}</div><div class="m">${x.pilote} · ${x.livrable}${ech}${forcee}</div>
-        <select class="lg">${LIGNES.map((l, k) => `<option value="${k}"${k === x.r ? ' selected' : ''}>${k === 2 ? 'Plus tard' : l}</option>`).join('')}</select></div>
+        <select class="lg">${LIGNES.map((l, k) => `<option value="${k}"${k === x.r ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
       <button type="button" title="Monter">▲</button><button type="button" title="Descendre">▼</button>`;
     row.querySelector('.lg').onchange = (ev) => { x.r = Number(ev.target.value); dessinerOrdre(list); };
     row.querySelector('.t').title = x.titre;
