@@ -57,7 +57,7 @@
   </style>
 </head>
 <body><div id="defil">
-  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v31</div>
+  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v32</div>
   <div id="vueOrdre" hidden>
     <h1 id="ordreTtl">Ordre de traitement</h1>
     <div class="sub">Flèches pour changer l'ordre, puis « Enregistrer l'ordre ». La zone 3 suit cet ordre dans chaque case.</div>
@@ -72,6 +72,10 @@
   <div id="vueDossier">
   <h1 id="ttl">Nouveau dossier</h1>
   <div class="sub" id="sub">Clique une pastille sur le board pour la modifier.</div>
+  <div class="confirm" id="confirmZ2">Retirer <strong id="z2t"></strong> de la zone 2 ?<br>
+    <span style="font-size:12px">La priorité repasse à « — » et les actions avant-vente sont supprimées. Le dossier reste en zone 1.</span>
+    <div class="row"><button class="btn danger" id="z2Yes">Oui, retirer</button><button class="btn ghost" id="z2No">Annuler</button></div>
+  </div>
 
   <label for="titre">Client · site</label>
   <div class="titreBox"><input type="text" id="titre" placeholder="ex. SCANIA Angers" autocomplete="off"><a id="oppId" target="_blank" rel="noopener" title="Ouvrir la fiche opportunité dans jCRM" hidden></a></div>
@@ -120,6 +124,6 @@
   </div>
 
   </div>
-  <script type="module" src="panel.js?v=31"></script>
+  <script type="module" src="panel.js?v=32"></script>
 </div></body>
 </html>

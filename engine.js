@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=31';
+} from './config.js?v=32';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -543,6 +543,7 @@ function cardData2(m) {
   return { title: esc(tronque(m.titre, G2.titreMax - ech.length)) + ech, style: { cardTheme: theme(m) }, fields };
 }
 
+const X2 = 20;   // taille de la croix de retrait (zone 2)
 async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
   let f = findFrame(snap.frames, 'Gestion des priorités');
   if (!f) {
@@ -601,6 +602,20 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
     garder.add(c.item.id);
   }
   await Promise.all(cartes.filter((x) => !garder.has(x.item.id)).map((x) => remove(x.item)));
+  // croix ✕ en haut à droite de chaque carte : retire le dossier de la zone 2 (confirmation dans le panneau)
+  const croix = new Map(dans.filter((x) => x.meta.role === 'x2').map((x) => [x.meta.ref, x]));
+  for (const d of prio) {
+    let x = croix.get(d.item.id);
+    if (!x) {
+      const it = await creer(f, 'shape', { shape: 'rectangle', content: '<p>✕</p>', width: X2, height: X2,
+        style: { fillColor: '#ffffff', color: '#9aa0a6', fontSize: 14, fontFamily: 'open_sans', textAlign: 'center', textAlignVertical: 'middle', borderOpacity: 0 } },
+      { role: 'x2', ref: d.item.id });
+      x = { item: it, meta: cache.get(it.id) };
+      croix.set(d.item.id, x);
+    } else if (d.carte2.neuf) await board().bringToFront(x.item).catch(() => {});
+    d.croix2 = x;
+  }
+  await Promise.all([...croix].filter(([ref]) => !prio.some((d) => d.item.id === ref)).map(([, x]) => remove(x.item)));
 
   // 3. décor + rangement (2 cartes par ligne, tri par enjeu puis échéance)
   const syncs = [];
@@ -619,6 +634,7 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
       const it = d.carte2.item;
       const h = it.height || 88;
       const pr = update(it, f, left + G2.cardPad + G2.cardW / 2, y + h / 2);
+      push(update(d.croix2.item, f, left + G2.cardPad + G2.cardW - X2 / 2 - 4, y + X2 / 2 + 4));
       y += h + G2.gap;
       if (pr) push(pr); else if (d.carte2.modifie) push(syncSur(it, f));
     });
@@ -694,6 +710,14 @@ export async function marquerFait(dossierId, av, livrable, fait) {
   m.maj = new Date().toISOString();
   await setMeta(item, m);
   await layout({ pilotes: new Set() });
+}
+// Croix de la zone 2 : retire le dossier des priorités (priorité « — ») et supprime ses actions avant-vente
+export async function retirerZone2(dossierId) {
+  const item = await board().getById(dossierId);
+  const m = { ...(await metaOf(item)), priorite: '—', taches: [], maj: new Date().toISOString() };
+  delete m.ressource; delete m.livrables; delete m.echeance;          // anciens champs (avant les tâches)
+  await setMeta(item, m);
+  await layout({ pilotes: new Set([m.pilote]) });
 }
 export async function enregistrerOrdreAV(av, cles) {
   await board().setAppData(`ordre_${av}`, cles);

@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=31';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, trimestresAffiches } from './engine.js?v=31';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=32';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches } from './engine.js?v=32';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -107,6 +107,7 @@ function fill(d, id) {
     'Clique une pastille sur le board pour la modifier.';
   $('delRow').hidden = !id;
   $('confirm').classList.remove('on');
+  $('confirmZ2').classList.remove('on');
 }
 
 function collect() {
@@ -157,6 +158,19 @@ async function autoSave(libelle) {
 $('taches').addEventListener('change', (ev) => { if (ev.target.classList.contains('t-ok')) autoSave(ev.target.checked ? 'Pointé comme fait…' : 'Remis à faire…'); });
 $('carsat').addEventListener('change', () => autoSave('Enregistrement CARSAT…'));
 $('del').onclick = () => $('confirm').classList.add('on');
+$('z2No').onclick = () => $('confirmZ2').classList.remove('on');
+$('z2Yes').onclick = () => {
+  const id = currentId;
+  if (!id) return;
+  $('confirmZ2').classList.remove('on');
+  busy('Retrait de la zone 2…', async () => {
+    await retirerZone2(id);
+    const it = await miro.board.getById(id).catch(() => null);
+    const d = it && await readDossier(it);
+    if (d) fill(d, id);
+    status('Retiré de la zone 2 : priorité « — », actions avant-vente supprimées.');
+  });
+};
 $('delNo').onclick = () => $('confirm').classList.remove('on');
 $('delYes').onclick = () => busy('Suppression…', async () => {
   const t = $('titre').value;
@@ -251,6 +265,12 @@ async function charger(items) {
   if (item.type === 'shape') {
     const m0 = await item.getMetadata('pbh').catch(() => null);
     if (m0?.role === 'hdr3') { await ouvrirOrdre(m0.av); return; }
+    if (m0?.role === 'x2' && m0.ref) {                                  // croix de la zone 2
+      const it = await miro.board.getById(m0.ref).catch(() => null);
+      const d = it && await readDossier(it);
+      if (d) { afficherVue(false); fill(d, it.id); $('z2t').textContent = d.titre; $('confirmZ2').classList.add('on'); }
+      return;
+    }
     if (m0?.role === 'ch4' && m0.ref) item = await miro.board.getById(m0.ref).catch(() => null);   // ligne du tableau de chasse
   }
   if (item.type === 'card') {
