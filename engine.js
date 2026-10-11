@@ -7,7 +7,7 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=12';
+} from './config.js?v=13';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -441,9 +441,12 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
       if (x.meta.role === 'bg2') { const h = H - G2.top - G.margin + G.hdrH; push(update(x.item, f, left + colW / 2, G2.top - G.hdrH + h / 2, { width: colW, height: h })); }
       if (x.meta.role === 'hdr2') push(update(x.item, f, left + colW / 2, G2.top - G.hdrH / 2, { width: colW, height: G.hdrH, content: `<p><strong>${LIBELLE_PRIO[p]} · ${list.length}</strong></p>` }));
     }
-    list.forEach((d, i) => {
+    let y = G2.top + 12;                              // empilement selon la hauteur réelle, espace constant
+    list.forEach((d) => {
       const it = d.carte2.item;
-      const pr = update(it, f, left + G2.cardPad + G2.cardW / 2, G2.top + 16 + G2.rowStep / 2 + i * G2.rowStep);
+      const h = it.height || 88;
+      const pr = update(it, f, left + G2.cardPad + G2.cardW / 2, y + h / 2);
+      y += h + G2.gap;
       if (pr) push(pr); else if (d.carte2.modifie) push(syncSur(it, f));
     });
   });
@@ -561,11 +564,14 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
     for (let r = 0; r < NH; r++) {
       const list = cibles.filter((c) => c.av === av && c.r === r).sort(ordre);
       const pad = G3.cardPad;
-      list.forEach((c, i) => {
-        const vis = i < capacite;
-        const k = vis ? i : capacite - 1;           // au-delà de la capacité : empilées sous la dernière
+      let y = rowY(r) + 8, visibles = 0;
+      list.forEach((c) => {
+        const h = c.x.item.height || 88;
+        const tient = y + h <= rowY(r) + rowH - 8;
+        if (tient) visibles++;
         const rx = colX(j) + pad + G3.cardW / 2;
-        const ry = rowY(r) + 8 + G3.rowStep / 2 + k * G3.rowStep;
+        const ry = tient ? y + h / 2 : rowY(r) + rowH - 8 - h / 2;   // au-delà : empilées en bas de case
+        if (tient) y += h + G3.gap;
         const p = update(c.x.item, f, rx, ry);
         if (p) push(p); else if (c.x.modifie) push(syncSur(c.x.item, f));
       });
@@ -573,7 +579,7 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
       const cle = `${av}|${r}`;
       let ovf = debordements.get(cle);
       debordements.delete(cle);
-      const n = list.length - capacite;
+      const n = list.length - visibles;
       if (n > 0) {
         if (!ovf) ovf = await creer(f, 'shape', { shape: 'round_rectangle', content: '', width: 70, height: 30,
           style: { fillColor: '#c8341f', color: '#ffffff', fontSize: 14, fontFamily: 'open_sans', textAlign: 'center', textAlignVertical: 'middle', borderOpacity: 0 } }, { role: 'ovf3', av, r });
