@@ -7,7 +7,7 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=18';
+} from './config.js?v=19';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -332,7 +332,8 @@ async function layoutInterne({ pilotes = null } = {}) {
   if (!f1) return null;
   // post-its de la boîte mobile : intégrés avant le rangement (rangement complet s'il y en a)
   let mobiles = 0;
-  if (!pilotes) {
+  const BOITE_MOBILE_ACTIVE = false;   // saisie mobile abandonnée (décision 11/10) : code conservé, désactivé
+  if (BOITE_MOBILE_ACTIVE && !pilotes) {
     try { mobiles = await boiteMobile(snap, f1); } catch (e) { console.warn('Boîte mobile', e); }
     if (mobiles) snap = await snapshot();
   }
