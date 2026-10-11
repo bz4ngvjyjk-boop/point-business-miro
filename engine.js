@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM, PART_SCENARIOS,
-} from './config.js?v=25';
+} from './config.js?v=26';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -935,7 +935,7 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
       // (les cellules ouvrent la fiche du dossier au clic : métadonnée « ref »)
       cells.forEach((html, i) => rowP.push(cellule(`r${c.d.item.id}_${i}`, { role: 'ch4', ref: c.d.item.id },
         xCol(i) + G4.cols[i] / 2, ry, G4.cols[i], G4.ligneH, html,
-        { ...base, fillColor: fond, color: i === 2 && !sg && !perdu ? '#6b6f76' : coul, fontSize: 14,
+        { ...base, fillColor: fond, color: i === 2 && !sg && !perdu ? '#6b6f76' : coul, fontSize: 13,
           textAlign: i === 3 ? 'right' : i === 1 ? 'center' : 'left' })));
     });
     await Promise.all(rowP);
