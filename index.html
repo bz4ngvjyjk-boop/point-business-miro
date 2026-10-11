@@ -14,7 +14,9 @@
     const META = 'pbh';
     let ouvert = false;
     const ouvrir = async () => {
-      try { await miro.board.ui.openPanel({ url: 'panel.html?v=35' }); ouvert = true; }
+      // version lue à chaque ouverture (sans cache) : une mise en ligne est prise en compte tout de suite
+      const v = await fetch('version.txt', { cache: 'no-store' }).then((r) => r.text()).catch(() => '') || Date.now();
+      try { await miro.board.ui.openPanel({ url: `panel.html?v=${String(v).trim()}` }); ouvert = true; }
       catch (e) { /* panneau déjà ouvert */ ouvert = true; }
     };
     miro.board.ui.on('icon:click', ouvrir);
