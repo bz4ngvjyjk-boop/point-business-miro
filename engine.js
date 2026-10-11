@@ -7,7 +7,7 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=16';
+} from './config.js?v=17';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -480,7 +480,15 @@ function horizon(t) {
 
 // Ordre manuel par avant-vente (enregistré sur le board) : liste de clés de tâches
 const cleTache = (dossierId, av, livrable) => `${dossierId}|${av}|${livrable}`;
-async function ordreManuel(av) { return (await board().getAppData(`ordre_${av}`).catch(() => null)) || []; }
+async function ordreBrut(av) { return (await board().getAppData(`ordre_${av}`).catch(() => null)) || []; }
+// clés dans l'ordre manuel (les entrées peuvent être des chaînes ou des objets { key, r })
+async function ordreManuel(av) { return (await ordreBrut(av)).map((e) => (typeof e === 'string' ? e : e.key)); }
+// lignes forcées à la main : clé -> 0 / 1 / 2
+async function lignesForcees(av) {
+  const m = new Map();
+  for (const e of await ordreBrut(av)) if (e && typeof e === 'object' && Number.isInteger(e.r)) m.set(e.key, e.r);
+  return m;
+}
 const rangPrio = (p) => ({ P1: 0, P2: 1, P3: 2 }[p] ?? 3);
 const ordreAuto = (a, b) => (a.t.echeance || '9').localeCompare(b.t.echeance || '9')
   || rangPrio(a.t.priorite) - rangPrio(b.t.priorite) || ordreEnjeu(a.d.meta.enjeu) - ordreEnjeu(b.d.meta.enjeu);
@@ -497,17 +505,20 @@ function trier(list, manuel) {
 export async function tachesAV(av) {
   const snap = await snapshot();
   const manuel = await ordreManuel(av);
+  const forcees = await lignesForcees(av);
   const list = [];
   for (const d of snap.items.filter((x) => x.meta?.role === 'dossier')) {
     for (const t of tachesDe(d.meta)) {
       if (t.ressource !== av || !(LIVRABLES_PLAN.includes(t.livrable) || LIVRABLES_DEVIS.includes(t.livrable))) continue;
-      list.push({ d, t, key: cleTache(d.item.id, av, t.livrable), r: Math.min(horizon(t), HORIZONS.length) });
+      const key = cleTache(d.item.id, av, t.livrable);
+      const rAuto = Math.min(horizon(t), HORIZONS.length);
+      list.push({ d, t, key, rAuto, r: forcees.has(key) ? forcees.get(key) : rAuto });
     }
   }
   trier(list, manuel);
   list.sort((a, b) => a.r - b.r);   // regroupé par horizon (tri stable : l'ordre est conservé dans chaque groupe)
   return list.map((c) => ({ key: c.key, titre: c.d.meta.titre, pilote: c.d.meta.pilote, livrable: c.t.livrable,
-    echeance: c.t.echeance, horizon: c.r < HORIZONS.length ? HORIZONS[c.r] : 'Plus tard (hors zone 3)' }));
+    echeance: c.t.echeance, r: c.r, rAuto: c.rAuto }));
 }
 export async function enregistrerOrdreAV(av, cles) {
   await board().setAppData(`ordre_${av}`, cles);
@@ -551,12 +562,14 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
 
   // cartes cibles : un reflet par (dossier, avant-vente) qui attend un plan et/ou un devis
   const cibles = [];
+  const forceesParAV = Object.fromEntries(await Promise.all(RESSOURCES.map(async (a) => [a, await lignesForcees(a)])));
   const compte = Object.fromEntries(RESSOURCES.map((a) => [a, { plans: 0, devis: 0 }]));
   for (const d of dossiers) {
     for (const t of tachesDe(d.meta)) {
       const av = t.ressource;
       if (!RESSOURCES.includes(av) || !(LIVRABLES_PLAN.includes(t.livrable) || LIVRABLES_DEVIS.includes(t.livrable))) continue;
-      const r = horizon(t);
+      const k0 = cleTache(d.item.id, av, t.livrable);
+      const r = forceesParAV[av].has(k0) ? forceesParAV[av].get(k0) : horizon(t);   // ligne forcée à la main
       if (r >= NH) continue;                         // au-delà de S+1 : pas affiché
       cibles.push({ d, t, av, r, livr: [t.livrable], key: cleTache(d.item.id, av, t.livrable) });
       if (LIVRABLES_PLAN.includes(t.livrable)) compte[av].plans++;

@@ -40,12 +40,13 @@
     .oi { display:grid; grid-template-columns: 1fr 26px 26px; gap:4px; align-items:center; background:#fff; border:1px solid var(--line); border-radius:5px; padding:5px 6px; margin-bottom:4px; }
     .oi .t { font-weight:600; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .oi .m { font-size:11px; color:var(--mut); }
+    .oi .lg { margin-top:3px; font:inherit; font-size:11px; border:1px solid var(--line); border-radius:4px; padding:1px 3px; background:#fff; }
     .oi button { border:1px solid var(--line); background:var(--soft); border-radius:4px; cursor:pointer; font-size:12px; padding:2px 0; }
     button:focus-visible, input:focus-visible { outline:2px solid var(--or); outline-offset:1px; }
   </style>
 </head>
 <body>
-  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v16</div>
+  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v17</div>
   <div id="vueOrdre" hidden>
     <h1 id="ordreTtl">Ordre de traitement</h1>
     <div class="sub">Flèches pour changer l'ordre, puis « Enregistrer l'ordre ». La zone 3 suit cet ordre dans chaque case.</div>
@@ -99,6 +100,6 @@
   </div>
 
   </div>
-  <script type="module" src="panel.js?v=16"></script>
+  <script type="module" src="panel.js?v=17"></script>
 </body>
 </html>

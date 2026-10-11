@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=16';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV } from './engine.js?v=16';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=17';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV } from './engine.js?v=17';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -131,20 +131,25 @@ $('import').onclick = () => busy('Lecture du fichier d\'import…', async () => 
 // ── Vue « ordre de traitement » d'un avant-vente (clic sur un en-tête de la zone 3) ──
 let ordreAV = null, ordreListe = [];
 function afficherVue(ordre) { $('vueOrdre').hidden = !ordre; $('vueDossier').hidden = ordre; }
+const LIGNES = ['Cette semaine', 'S+1', 'Plus tard (hors zone 3)'];
 function dessinerOrdre(list) {
+  list.sort((a, b) => a.r - b.r);                   // regroupé par ligne, ordre conservé dans chaque groupe
   const box = $('ordreListe');
   box.innerHTML = '';
   let groupe = null;
   list.forEach((x, i) => {
-    if (x.horizon !== groupe) { groupe = x.horizon; box.insertAdjacentHTML('beforeend', `<div class="og">${groupe}</div>`); }
+    if (x.r !== groupe) { groupe = x.r; box.insertAdjacentHTML('beforeend', `<div class="og">${LIGNES[groupe]}</div>`); }
     const ech = x.echeance ? ` · éch. ${x.echeance.slice(8, 10)}/${x.echeance.slice(5, 7)}` : '';
     const row = document.createElement('div');
     row.className = 'oi';
-    row.innerHTML = `<div><div class="t">${i + 1}. ${x.titre}</div><div class="m">${x.pilote} · ${x.livrable}${ech}</div></div>
+    const forcee = x.r !== x.rAuto ? ' · <b>ligne choisie</b>' : '';
+    row.innerHTML = `<div><div class="t">${i + 1}. ${x.titre}</div><div class="m">${x.pilote} · ${x.livrable}${ech}${forcee}</div>
+        <select class="lg">${LIGNES.map((l, k) => `<option value="${k}"${k === x.r ? ' selected' : ''}>${k === 2 ? 'Plus tard' : l}</option>`).join('')}</select></div>
       <button type="button" title="Monter">▲</button><button type="button" title="Descendre">▼</button>`;
+    row.querySelector('.lg').onchange = (ev) => { x.r = Number(ev.target.value); dessinerOrdre(list); };
     row.querySelector('.t').title = x.titre;
     const [haut, bas] = row.querySelectorAll('button');
-    haut.disabled = i === 0; bas.disabled = i === list.length - 1;
+    haut.disabled = i === 0 || list[i - 1].r !== x.r; bas.disabled = i === list.length - 1 || list[i + 1].r !== x.r;
     haut.onclick = () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; dessinerOrdre(list); };
     bas.onclick = () => { [list[i + 1], list[i]] = [list[i], list[i + 1]]; dessinerOrdre(list); };
     box.appendChild(row);
@@ -163,7 +168,10 @@ async function ouvrirOrdre(av) {
 $('ordreRetour').onclick = () => afficherVue(false);
 $('ordreSave').onclick = async () => {
   $('ordreStatus').textContent = 'Enregistrement…';
-  try { await enregistrerOrdreAV(ordreAV, ordreListe.map((x) => x.key)); $('ordreStatus').textContent = 'Ordre enregistré, zone 3 mise à jour.'; }
+  try {
+    await enregistrerOrdreAV(ordreAV, ordreListe.map((x) => (x.r !== x.rAuto ? { key: x.key, r: x.r } : x.key)));
+    $('ordreStatus').textContent = 'Ordre et lignes enregistrés, zone 3 mise à jour.';
+  }
   catch (e) { $('ordreStatus').textContent = e.message; }
 };
 $('ordreAuto').onclick = async () => {
