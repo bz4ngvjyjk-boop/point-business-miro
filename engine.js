@@ -7,7 +7,7 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=20';
+} from './config.js?v=21';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -484,7 +484,8 @@ const theme = (m) => { const e = enjeu(m.enjeu); return e.fill === '#ffffff' ? '
 const echTxt = (m) => { const e = echeanceMin(m); return e ? ` · éch. ${e.slice(8, 10)}/${e.slice(5, 7)}` : ''; };
 function cardData2(m) {
   const fields = tachesDe(m).filter((t) => t.ressource || t.livrable).map((t) => ({
-    value: [t.ressource, t.livrable].filter(Boolean).join(' · '), fillColor: t.ressource ? OR : '#e3f4d6', textColor: BLEU }));
+    value: [t.ressource, t.livrable].filter(Boolean).join(' · ') + (t.fait ? ' ✓' : ''),
+    fillColor: t.fait ? '#1e8e4e' : (t.ressource ? OR : '#e3f4d6'), textColor: t.fait ? '#ffffff' : BLEU }));
   const a = alerte(echeanceMin(m));
   if (a) fields.push(a);
   if (m.carsat) fields.push({ value: 'CARSAT', fillColor: CARSAT, textColor: '#ffffff' });
@@ -608,6 +609,7 @@ const ordreAuto = (a, b) => (a.t.echeance || '9').localeCompare(b.t.echeance || 
 function trier(list, manuel) {
   const idx = (c) => { const i = manuel.indexOf(c.key); return i < 0 ? Infinity : i; };
   return list.sort((a, b) => {
+    if (!!a.t.fait !== !!b.t.fait) return a.t.fait ? 1 : -1;      // ce qui est fait descend en bas
     const ia = idx(a), ib = idx(b);
     if (ia !== ib) return ia === Infinity ? 1 : ib === Infinity ? -1 : ia - ib;
     return ordreAuto(a, b);
@@ -631,7 +633,17 @@ export async function tachesAV(av) {
   trier(list, manuel);
   list.sort((a, b) => a.r - b.r);   // regroupé par horizon (tri stable : l'ordre est conservé dans chaque groupe)
   return list.map((c) => ({ key: c.key, titre: c.d.meta.titre, pilote: c.d.meta.pilote, livrable: c.t.livrable,
-    echeance: c.t.echeance, r: c.r, rAuto: c.rAuto }));
+    echeance: c.t.echeance, r: c.r, rAuto: c.rAuto, fait: !!c.t.fait, dossierId: c.d.item.id }));
+}
+// Pointage par l'avant-vente : tâche faite / à faire
+export async function marquerFait(dossierId, av, livrable, fait) {
+  const item = await board().getById(dossierId);
+  const m = { ...(await metaOf(item)) };
+  m.taches = tachesDe(m).map((t) => (t.ressource === av && t.livrable === livrable
+    ? { ...t, fait, faitLe: fait ? new Date().toISOString().slice(0, 10) : null } : t));
+  m.maj = new Date().toISOString();
+  await setMeta(item, m);
+  await layout({ pilotes: new Set() });
 }
 export async function enregistrerOrdreAV(av, cles) {
   await board().setAppData(`ordre_${av}`, cles);
@@ -693,12 +705,15 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
   const garder = new Set();
   for (const c of cibles) {
     const m = c.d.meta;
-    const fields = [{ value: m.pilote, fillColor: BLEU, textColor: '#ffffff' },
+    const fields = [...(c.t.fait ? [{ value: '✓ Fait', fillColor: '#1e8e4e', textColor: '#ffffff' }] : []),
+      { value: m.pilote, fillColor: BLEU, textColor: '#ffffff' },
       ...c.livr.map((l) => ({ value: l, fillColor: '#e3f4d6', textColor: '#245c12' }))];
     const a = alerte(c.t.echeance);
     if (a) fields.push(a);
     const ech = c.t.echeance ? ` · éch. ${c.t.echeance.slice(8, 10)}/${c.t.echeance.slice(5, 7)}` : '';
-    const data = { title: esc(tronque(m.titre, G3.titreMax - ech.length)) + ech, style: { cardTheme: theme(m) }, fields };
+    const coche = c.t.fait ? '✓ ' : '';
+    const data = { title: coche + esc(tronque(m.titre, G3.titreMax - ech.length - coche.length)) + ech,
+      style: { cardTheme: c.t.fait ? '#1e8e4e' : theme(m) }, fields };
     const sig = JSON.stringify(data);
     let x = exist.get(c.key);
     if (!x) {

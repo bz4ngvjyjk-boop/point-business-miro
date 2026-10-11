@@ -30,8 +30,9 @@
     .chk { display:flex; align-items:center; gap:6px; margin-top:12px; }
     .av { margin-top:14px; border:1px solid var(--line); border-radius:6px; padding:8px; background:var(--soft); }
     .av-ttl { font-weight:700; color:var(--bleu); margin-bottom:6px; }
-    .tache { display:grid; grid-template-columns: 70px 1fr 18px; grid-template-areas: "res liv del" "pri ech ech";
+    .tache { display:grid; grid-template-columns: 70px 1fr 18px; grid-template-areas: "res liv del" "pri ech ech" "fait fait fait";
       gap:4px; align-items:center; padding:6px; margin-bottom:6px; background:#fff; border:1px solid var(--line); border-radius:5px; }
+    .t-fait { grid-area:fait; display:flex; align-items:center; gap:5px; margin:0; font-size:12px; text-transform:none; letter-spacing:0; color:#1e8e4e; font-weight:700; }
     .t-res { grid-area:res; } .t-liv { grid-area:liv; } .t-pri { grid-area:pri; } .t-ech { grid-area:ech; } .del { grid-area:del; }
     .tache select, .tache input { width:100%; border:1px solid var(--line); border-radius:4px; padding:4px 3px; font:inherit; font-size:12px; background:#fff; }
     .tache .del { border:0; background:none; color:#c8341f; font-size:16px; cursor:pointer; padding:0; }
@@ -40,13 +41,15 @@
     .oi { display:grid; grid-template-columns: 1fr 26px 26px; gap:4px; align-items:center; background:#fff; border:1px solid var(--line); border-radius:5px; padding:5px 6px; margin-bottom:4px; }
     .oi .t { font-weight:600; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .oi .m { font-size:11px; color:var(--mut); }
+    .oi.fait { background:#e9f6ee; border-color:#1e8e4e; }
+    .oi .okf { display:inline-flex; align-items:center; gap:4px; margin:3px 0 0 8px; font-size:11px; color:#1e8e4e; font-weight:700; text-transform:none; letter-spacing:0; }
     .oi .lg { margin-top:3px; font:inherit; font-size:11px; border:1px solid var(--line); border-radius:4px; padding:1px 3px; background:#fff; }
     .oi button { border:1px solid var(--line); background:var(--soft); border-radius:4px; cursor:pointer; font-size:12px; padding:2px 0; }
     button:focus-visible, input:focus-visible { outline:2px solid var(--or); outline-offset:1px; }
   </style>
 </head>
 <body>
-  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v20</div>
+  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v21</div>
   <div id="vueOrdre" hidden>
     <h1 id="ordreTtl">Ordre de traitement</h1>
     <div class="sub">Flèches pour changer l'ordre, puis « Enregistrer l'ordre ». La zone 3 suit cet ordre dans chaque case.</div>
@@ -100,6 +103,6 @@
   </div>
 
   </div>
-  <script type="module" src="panel.js?v=20"></script>
+  <script type="module" src="panel.js?v=21"></script>
 </body>
 </html>

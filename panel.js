@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=20';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV } from './engine.js?v=20';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=21';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait } from './engine.js?v=21';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -38,7 +38,9 @@ function ligneTache(t = {}) {
     <select class="t-liv"><option value="">—</option>${opts(LIVRABLES, t.livrable)}</select>
     <select class="t-pri">${opts(['P1', 'P2', 'P3', '—'], t.priorite || '—')}</select>
     <input type="date" class="t-ech" value="${t.echeance || ''}">
-    <button type="button" class="del" title="Retirer cette ligne">×</button>`;
+    <button type="button" class="del" title="Retirer cette ligne">×</button>
+    <label class="t-fait" title="Cocher quand le livrable est traité"><input type="checkbox" class="t-ok"${t.fait ? ' checked' : ''}> Fait</label>`;
+  row.dataset.faitLe = t.faitLe || '';
   row.querySelector('.del').onclick = () => row.remove();
   $('taches').appendChild(row);
 }
@@ -46,6 +48,8 @@ $('addTache').onclick = () => ligneTache();
 const lireTaches = () => [...document.querySelectorAll('#taches .tache')].map((r) => ({
   ressource: r.querySelector('.t-res').value, livrable: r.querySelector('.t-liv').value,
   priorite: r.querySelector('.t-pri').value, echeance: r.querySelector('.t-ech').value || null,
+  fait: r.querySelector('.t-ok').checked,
+  faitLe: r.querySelector('.t-ok').checked ? (r.dataset.faitLe || new Date().toISOString().slice(0, 10)) : null,
 })).filter((t) => t.ressource || t.livrable);
 
 function status(msg, err = false) {
@@ -143,10 +147,18 @@ function dessinerOrdre(list) {
     const row = document.createElement('div');
     row.className = 'oi';
     const forcee = x.r !== x.rAuto ? ' · <b>ligne choisie</b>' : '';
-    row.innerHTML = `<div><div class="t">${i + 1}. ${x.titre}</div><div class="m">${x.pilote} · ${x.livrable}${ech}${forcee}</div>
+    row.innerHTML = `<div><div class="t">${x.fait ? '✓ ' : ''}${i + 1}. ${x.titre}</div><div class="m">${x.pilote} · ${x.livrable}${ech}${forcee}</div>
+        <label class="okf"><input type="checkbox" class="ok"${x.fait ? ' checked' : ''}> Fait</label>
         <select class="lg">${LIGNES.map((l, k) => `<option value="${k}"${k === x.r ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
       <button type="button" title="Monter">▲</button><button type="button" title="Descendre">▼</button>`;
     row.querySelector('.lg').onchange = (ev) => { x.r = Number(ev.target.value); dessinerOrdre(list); };
+    row.querySelector('.ok').onchange = async (ev) => {
+      x.fait = ev.target.checked;
+      $('ordreStatus').textContent = x.fait ? 'Pointé comme fait…' : 'Remis à faire…';
+      try { await marquerFait(x.dossierId, ordreAV, x.livrable, x.fait); dessinerOrdre(list); $('ordreStatus').textContent = x.fait ? '✓ Pointé comme fait.' : 'Remis à faire.'; }
+      catch (e) { $('ordreStatus').textContent = e.message; }
+    };
+    if (x.fait) row.classList.add('fait');
     row.querySelector('.t').title = x.titre;
     const [haut, bas] = row.querySelectorAll('button');
     haut.disabled = i === 0 || list[i - 1].r !== x.r; bas.disabled = i === list.length - 1 || list[i + 1].r !== x.r;
