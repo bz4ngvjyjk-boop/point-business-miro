@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=54';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin, dossiersParking, mettreEnParking } from './engine.js?v=54';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=55';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin, dossiersParking, mettreEnParking } from './engine.js?v=55';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -67,6 +67,9 @@ function status(msg, err = false) {
   $('chasseTrim').innerHTML = opts.map((q) => `<option>${q}</option>`).join('');
 })();
 let chasseLe = null, suiviInitial = '', oppId = null, parkingLe = null;
+// bouton « Parking » (à droite des priorités) : bascule indépendante de la priorité, enregistrée aussitôt
+const enParking = () => $('parking').getAttribute('aria-pressed') === 'true';
+$('parking').addEventListener('click', () => { $('parking').setAttribute('aria-pressed', String(!enParking())); planifier(0); });
 // N° d'opportunité : saisi une fois (champ « Opportunité jCRM »), puis affiché en lien grisé ; « ✎ modifier » pour corriger
 function afficherOpp(edition = false) {
   $('oppId').hidden = !oppId;
@@ -111,7 +114,7 @@ function fill(d, id) {
   const ts = d ? tachesDe(d) : [];
   (ts.length ? ts : [{}]).forEach(ligneTache);
   $('carsat').checked = !!d?.carsat;
-  $('parking').checked = !!d?.parking;
+  $('parking').setAttribute('aria-pressed', String(!!d?.parking));
   parkingLe = d?.parkingLe || null;
   $('ttl').textContent = id ? 'Modifier le dossier' : 'Nouveau dossier';
   $('sub').textContent = id ? (d?.maj ? `Dernière mise à jour : ${new Date(d.maj).toLocaleString('fr-FR')}` : '') :
@@ -140,8 +143,8 @@ function collect() {
     jcrm: oppId,
     suivi: suiviDate(),
     carsat: $('carsat').checked,
-    parking: $('parking').checked,
-    parkingLe: $('parking').checked ? (parkingLe || new Date().toISOString().slice(0, 10)) : null,
+    parking: enParking(),
+    parkingLe: enParking() ? (parkingLe || new Date().toISOString().slice(0, 10)) : null,
   };
   if (!d.titre) throw new Error('Indique le client et le site.');
   if (!d.pilote) throw new Error('Choisis le pilote.');

@@ -69,10 +69,12 @@
     .oppRow { display:flex; gap:6px; align-items:center; }
     #oppSaisie { flex:1; border:1px solid var(--line); border-radius:4px; padding:5px 8px; font:inherit; }
     #oppEdit { background:none; border:0; color:var(--bleu); font:inherit; font-size:12px; cursor:pointer; padding:0; }
+    #parking { border:1px dashed #FDB913; background:#fff; color:#7a5a00; border-radius:12px; padding:3px 9px; font:inherit; font-size:12px; cursor:pointer; white-space:nowrap; }
+    #parking[aria-pressed=true] { background:#FDB913; color:#1a1a1a; border-style:solid; font-weight:700; }
   </style>
 </head>
 <body><div id="defil">
-  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v54</div>
+  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v55</div>
   <div id="vueOrdre" hidden>
     <h1 id="ordreTtl">Ordre de traitement</h1>
     <div class="sub">Flèches pour changer l'ordre, liste pour changer de ligne ou de colonne : enregistrement automatique.</div>
@@ -100,7 +102,7 @@
   <label>Pilote</label><div class="seg" id="pilote"></div>
   <label>Enjeu</label><div class="seg" id="enjeu"></div>
   <label>Priorité commerciale (zone 2)</label>
-  <div class="prioRow"><div class="seg" id="priorite"></div><button type="button" id="z2Btn" title="Retirer de la zone 2 (priorité « — » et actions avant-vente supprimées)" hidden>✕</button></div>
+  <div class="prioRow"><div class="seg" id="priorite"></div><button type="button" id="parking" aria-pressed="false" title="Parking : à évoquer au prochain point (indépendant de la priorité)">Parking</button><button type="button" id="z2Btn" title="Retirer de la zone 2 (priorité « — » et actions avant-vente supprimées)" hidden>✕</button></div>
   <div class="confirm" id="confirmZ2">Retirer <strong id="z2t"></strong> de la zone 2 ?<br>
     <span style="font-size:12px">La priorité repasse à « — » et les actions avant-vente sont supprimées. Le dossier reste en zone 1.</span>
     <div class="row"><button class="btn danger" id="z2Yes">Oui, retirer</button><button class="btn ghost" id="z2No">Annuler</button></div>
@@ -122,7 +124,6 @@
     <div class="sub" id="chasseInfo" style="margin:4px 0 0"></div>
   </div>
   <div class="chk"><input type="checkbox" id="carsat"><label for="carsat" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)">Dossier CARSAT</label></div>
-  <div class="chk"><input type="checkbox" id="parking"><label for="parking" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)">Parking : à évoquer au prochain point</label></div>
 
   <div class="row">
     <button class="btn ghost" id="reset">Nouveau</button>
@@ -147,6 +148,6 @@
   </div>
 
   </div>
-  <script type="module" src="panel.js?v=54"></script>
+  <script type="module" src="panel.js?v=55"></script>
 </div></body>
 </html>
