@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=35';
+} from './config.js?v=36';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -75,6 +75,14 @@ function place(item, f, rx, ry) {
   else { item.x = f.x - f.width / 2 + rx; item.y = f.y - f.height / 2 + ry; }
 }
 // Déplace / redimensionne / restyle ; renvoie une promesse de synchro seulement si quelque chose change
+// Carte agrandie / rétrécie (redimensionnée à la main ou créée hors gabarit) : remise à la largeur standard
+// avant l'empilement, pour que sa hauteur relue soit la bonne.
+async function largeurCartes(items, w, f) {
+  await Promise.all(items.filter((it) => it.width && Math.abs(it.width - w) > 1).map((it) => {
+    it.width = w;
+    return syncSur(it, f);
+  }));
+}
 function update(item, f, rx, ry, patch = {}) {
   const avant = JSON.stringify([r1(item.x), r1(item.y), r1(item.width || 0), r1(item.height || 0), item.content, item.title, item.style, item.fields]);
   if (patch.width) item.width = patch.width;
@@ -607,7 +615,7 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
   // 3. décor + rangement (2 cartes par ligne, tri par enjeu puis échéance)
   const syncs = [];
   const push = (p) => { if (p) syncs.push(p); };
-  COLONNES_PRIO.forEach((p, k) => {
+  for (const [k, p] of COLONNES_PRIO.entries()) {
     const left = G.margin + k * (colW + G2.colGap);
     const list = prio.filter((d) => d.meta.priorite === p).sort((a, b) =>
       ordreEnjeu(a.meta.enjeu) - ordreEnjeu(b.meta.enjeu) || (echeanceMin(a.meta) || '9').localeCompare(echeanceMin(b.meta) || '9'));
@@ -617,6 +625,7 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
       if (x.meta.role === 'hdr2') push(update(x.item, f, left + colW / 2, G2.top - G.hdrH / 2, { width: colW, height: G.hdrH, content: `<p><strong>${LIBELLE_PRIO[p]} · ${list.length}</strong></p>` }));
     }
     let y = G2.top + 12;                              // empilement selon la hauteur réelle, espace constant
+    await largeurCartes(list.map((d) => d.carte2.item), G2.cardW, f);
     list.forEach((d) => {
       const it = d.carte2.item;
       const h = it.height || 88;
@@ -624,7 +633,7 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
       y += h + G2.gap;
       if (pr) push(pr); else if (d.carte2.modifie) push(syncSur(it, f));
     });
-  });
+  }
   await Promise.all(syncs);
   try { await resizeFrame(f, W2, H, top1, f1.x + f1.width / 2 + 200); } catch (e) { console.warn('Réduction du cadre 2 reportée', e); }
   return f;
@@ -814,6 +823,7 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
       const list = trier(cibles.filter((c) => c.av === av && c.r === r), manuels[av]);
       const pad = G3.cardPad;
       let y = rowY(r) + 8, visibles = 0;
+      await largeurCartes(list.map((c) => c.x.item), G3.cardW, f);
       list.forEach((c) => {
         const h = c.x.item.height || 88;
         const tient = y + h <= rowY(r) + rowH - 8;
