@@ -23,7 +23,7 @@
     miro.board.ui.on('selection:update', async ({ items }) => {
       if (items.length !== 1 || !['shape', 'card'].includes(items[0].type)) return;
       const m = await items[0].getMetadata(META).catch(() => null);
-      if (m && (['dossier', 'prio', 'av', 'hdr3', 'hdr2'].includes(m.role) || (m.role === 'ch4' && m.ref)) && !ouvert) await ouvrir();
+      if (m && (['dossier', 'prio', 'av', 'hdr3', 'hdr2', 'pk'].includes(m.role) || (m.role === 'ch4' && m.ref)) && !ouvert) await ouvrir();
     });
     miro.board.ui.on('panel:close', () => { ouvert = false; });
   </script>

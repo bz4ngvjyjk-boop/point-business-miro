@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=51';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin } from './engine.js?v=51';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=52';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin } from './engine.js?v=52';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -66,7 +66,7 @@ function status(msg, err = false) {
   for (let i = 0; i < 4; i++) { opts.push(`T${t} ${a}`); t++; if (t > 4) { t = 1; a++; } }
   $('chasseTrim').innerHTML = opts.map((q) => `<option>${q}</option>`).join('');
 })();
-let chasseLe = null, suiviInitial = '', oppId = null;
+let chasseLe = null, suiviInitial = '', oppId = null, parkingLe = null;
 // N° d'opportunité : saisi une fois (champ « Opportunité jCRM »), puis affiché en lien grisé ; « ✎ modifier » pour corriger
 function afficherOpp(edition = false) {
   $('oppId').hidden = !oppId;
@@ -111,6 +111,8 @@ function fill(d, id) {
   const ts = d ? tachesDe(d) : [];
   (ts.length ? ts : [{}]).forEach(ligneTache);
   $('carsat').checked = !!d?.carsat;
+  $('parking').checked = !!d?.parking;
+  parkingLe = d?.parkingLe || null;
   $('ttl').textContent = id ? 'Modifier le dossier' : 'Nouveau dossier';
   $('sub').textContent = id ? (d?.maj ? `Dernière mise à jour : ${new Date(d.maj).toLocaleString('fr-FR')}` : '') :
     'Clique une pastille sur le board pour la modifier.';
@@ -138,6 +140,8 @@ function collect() {
     jcrm: oppId,
     suivi: suiviDate(),
     carsat: $('carsat').checked,
+    parking: $('parking').checked,
+    parkingLe: $('parking').checked ? (parkingLe || new Date().toISOString().slice(0, 10)) : null,
   };
   if (!d.titre) throw new Error('Indique le client et le site.');
   if (!d.pilote) throw new Error('Choisis le pilote.');
@@ -183,6 +187,7 @@ async function autoSave() {
     currentId = item.id;
     suiviInitial = d.suivi || '';                 // la date du suivi n'est ajoutée qu'une fois
     chasseLe = d.chasseLe;
+    parkingLe = d.parkingLe;
     $('ttl').textContent = 'Modifier le dossier';
     $('sub').textContent = `Enregistré automatiquement à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
     $('delRow').hidden = false;
@@ -433,7 +438,7 @@ async function charger(items) {
   }
   if (item.type === 'card') {
     const m = await item.getMetadata('pbh').catch(() => null);
-    if (!m || !['prio', 'av'].includes(m.role) || !m.ref) return;
+    if (!m || !['prio', 'av', 'pk'].includes(m.role) || !m.ref) return;
     item = await miro.board.getById(m.ref).catch(() => null);
   }
   const d = await readDossier(item);
