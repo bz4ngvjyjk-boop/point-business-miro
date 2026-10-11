@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=28';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, trimestresAffiches } from './engine.js?v=28';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=29';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, trimestresAffiches } from './engine.js?v=29';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -67,7 +67,8 @@ function status(msg, err = false) {
   for (let i = 0; i < 4; i++) { opts.push(`T${t} ${a}`); t++; if (t > 4) { t = 1; a++; } }
   $('chasseTrim').innerHTML = opts.map((q) => `<option>${q}</option>`).join('');
 })();
-let chasseLe = null, suiviInitial = '';
+let chasseLe = null, suiviInitial = '', oppId = null;
+const JCRM_FICHE = 'https://crm.weinmann.fr/crm/index.php?page=opportunites-fiche&id=';
 // la date de saisie « (jj/mm) » est ajoutée au suivi quand le texte change (règle CRM : une info toujours datée)
 function suiviDate() {
   const t = $('suivi').value.trim();
@@ -86,7 +87,9 @@ function fill(d, id) {
     $('chasseTrim').insertAdjacentHTML('afterbegin', `<option class="passe" value="${d.chasseTrim}">${d.chasseTrim} (passé)</option>`);
   }
   if (d?.chasseTrim) $('chasseTrim').value = d.chasseTrim; else $('chasseTrim').selectedIndex = 0;
-  $('jcrm').value = d?.jcrm || '';
+  oppId = d?.jcrm || null;                      // n° d'opportunité jCRM : affiché, non modifiable
+  $('oppId').hidden = !oppId;
+  if (oppId) { $('oppId').textContent = '#' + oppId; $('oppId').href = JCRM_FICHE + oppId; }
   suiviInitial = d?.suivi || '';
   $('suivi').value = suiviInitial.replace(/\s*\(\d{2}\/\d{2}\)$/, '');
   chasseLe = d?.chasseLe || null;
@@ -116,7 +119,7 @@ function collect() {
     chasse: $('chasse').checked,
     chasseTrim: $('chasse').checked ? $('chasseTrim').value : null,
     chasseLe: $('chasse').checked ? (chasseLe || new Date().toISOString().slice(0, 10)) : null,
-    jcrm: $('jcrm').value ? Number($('jcrm').value) : null,
+    jcrm: oppId,
     suivi: suiviDate(),
     carsat: $('carsat').checked,
   };
