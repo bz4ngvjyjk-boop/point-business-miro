@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=21';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait } from './engine.js?v=21';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=22';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, trimestresAffiches } from './engine.js?v=22';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -39,7 +39,9 @@ function ligneTache(t = {}) {
     <select class="t-pri">${opts(['P1', 'P2', 'P3', '—'], t.priorite || '—')}</select>
     <input type="date" class="t-ech" value="${t.echeance || ''}">
     <button type="button" class="del" title="Retirer cette ligne">×</button>
-    <label class="t-fait" title="Cocher quand le livrable est traité"><input type="checkbox" class="t-ok"${t.fait ? ' checked' : ''}> Fait</label>`;
+    <label class="t-fait" title="Cocher quand le livrable est traité"><input type="checkbox" class="t-ok"${t.fait ? ' checked' : ''}><span class="etat ${t.fait ? 'ok' : 'ko'}">${t.fait ? 'fait' : 'à faire'}</span></label>`;
+  const ck = row.querySelector('.t-ok'), et = row.querySelector('.etat');
+  ck.addEventListener('change', () => { et.textContent = ck.checked ? 'fait' : 'à faire'; et.className = `etat ${ck.checked ? 'ok' : 'ko'}`; });
   row.dataset.faitLe = t.faitLe || '';
   row.querySelector('.del').onclick = () => row.remove();
   $('taches').appendChild(row);
@@ -57,8 +59,23 @@ function status(msg, err = false) {
   $('status').className = 'status' + (err ? ' err' : '');
 }
 
+// trimestres proposés : en cours + 3 suivants
+(function remplirTrimestres() {
+  const [q0] = trimestresAffiches();
+  let t = Number(q0[1]), a = Number(q0.slice(-4));
+  const opts = [];
+  for (let i = 0; i < 4; i++) { opts.push(`T${t} ${a}`); t++; if (t > 4) { t = 1; a++; } }
+  $('chasseTrim').innerHTML = opts.map((q) => `<option>${q}</option>`).join('');
+})();
+let chasseLe = null;
+
 function fill(d, id) {
   currentId = id || null;
+  $('chasse').checked = !!d?.chasse;
+  if (d?.chasseTrim) $('chasseTrim').value = d.chasseTrim; else $('chasseTrim').selectedIndex = 0;
+  $('jcrm').value = d?.jcrm || '';
+  chasseLe = d?.chasseLe || null;
+  $('chasseInfo').textContent = d?.chasse && chasseLe ? `Ajouté au tableau de chasse le ${chasseLe.slice(8, 10)}/${chasseLe.slice(5, 7)}/${chasseLe.slice(0, 4)}` : '';
   $('titre').value = d?.titre || '';
   setSeg('pilote', d?.pilote);
   setSeg('enjeu', d?.enjeu || 'Q');
@@ -81,6 +98,10 @@ function collect() {
     enjeu: getSeg('enjeu')[0] || 'Q',
     priorite: getSeg('priorite')[0] || '—',
     taches: lireTaches(),
+    chasse: $('chasse').checked,
+    chasseTrim: $('chasse').checked ? $('chasseTrim').value : null,
+    chasseLe: $('chasse').checked ? (chasseLe || new Date().toISOString().slice(0, 10)) : null,
+    jcrm: $('jcrm').value ? Number($('jcrm').value) : null,
     carsat: $('carsat').checked,
   };
   if (!d.titre) throw new Error('Indique le client et le site.');
@@ -103,6 +124,19 @@ $('save').onclick = () => busy('Enregistrement…', async () => {
   status(`« ${d.titre} » enregistré et rangé.`);
 });
 $('reset').onclick = () => fill(null);
+
+// Enregistrement automatique (dossier existant) : case « Fait » d'une ligne ressource et case CARSAT
+async function autoSave(libelle) {
+  if (!currentId) return;                          // nouveau dossier : enregistrement par le bouton
+  await busy(libelle, async () => {
+    const d = collect();
+    const item = await saveDossier(d, currentId);
+    fill(await readDossier(await miro.board.getById(item.id)), item.id);
+    status(`« ${d.titre} » enregistré automatiquement.`);
+  });
+}
+$('taches').addEventListener('change', (ev) => { if (ev.target.classList.contains('t-ok')) autoSave(ev.target.checked ? 'Pointé comme fait…' : 'Remis à faire…'); });
+$('carsat').addEventListener('change', () => autoSave('Enregistrement CARSAT…'));
 $('del').onclick = () => $('confirm').classList.add('on');
 $('delNo').onclick = () => $('confirm').classList.remove('on');
 $('delYes').onclick = () => busy('Suppression…', async () => {
@@ -148,7 +182,7 @@ function dessinerOrdre(list) {
     row.className = 'oi';
     const forcee = x.r !== x.rAuto ? ' · <b>ligne choisie</b>' : '';
     row.innerHTML = `<div><div class="t">${x.fait ? '✓ ' : ''}${i + 1}. ${x.titre}</div><div class="m">${x.pilote} · ${x.livrable}${ech}${forcee}</div>
-        <label class="okf"><input type="checkbox" class="ok"${x.fait ? ' checked' : ''}> Fait</label>
+        <label class="okf"><input type="checkbox" class="ok"${x.fait ? ' checked' : ''}><span class="etat ${x.fait ? 'ok' : 'ko'}">${x.fait ? 'fait' : 'à faire'}</span></label>
         <select class="lg">${LIGNES.map((l, k) => `<option value="${k}"${k === x.r ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
       <button type="button" title="Monter">▲</button><button type="button" title="Descendre">▼</button>`;
     row.querySelector('.lg').onchange = (ev) => { x.r = Number(ev.target.value); dessinerOrdre(list); };

@@ -32,7 +32,9 @@
     .av-ttl { font-weight:700; color:var(--bleu); margin-bottom:6px; }
     .tache { display:grid; grid-template-columns: 70px 1fr 18px; grid-template-areas: "res liv del" "pri ech ech" "fait fait fait";
       gap:4px; align-items:center; padding:6px; margin-bottom:6px; background:#fff; border:1px solid var(--line); border-radius:5px; }
-    .t-fait { grid-area:fait; display:flex; align-items:center; gap:5px; margin:0; font-size:12px; text-transform:none; letter-spacing:0; color:#1e8e4e; font-weight:700; }
+    .t-fait { grid-area:fait; display:flex; justify-content:flex-start; align-items:center; gap:6px; margin:0; font-size:12px; text-transform:none; letter-spacing:0; font-weight:700; cursor:pointer; }
+    .etat.ko { color:#c8341f; } .etat.ok { color:#1e8e4e; }
+    .t-fait input, .okf input { width:auto !important; margin:0; }
     .t-res { grid-area:res; } .t-liv { grid-area:liv; } .t-pri { grid-area:pri; } .t-ech { grid-area:ech; } .del { grid-area:del; }
     .tache select, .tache input { width:100%; border:1px solid var(--line); border-radius:4px; padding:4px 3px; font:inherit; font-size:12px; background:#fff; }
     .tache .del { border:0; background:none; color:#c8341f; font-size:16px; cursor:pointer; padding:0; }
@@ -42,14 +44,14 @@
     .oi .t { font-weight:600; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .oi .m { font-size:11px; color:var(--mut); }
     .oi.fait { background:#e9f6ee; border-color:#1e8e4e; }
-    .oi .okf { display:inline-flex; align-items:center; gap:4px; margin:3px 0 0 8px; font-size:11px; color:#1e8e4e; font-weight:700; text-transform:none; letter-spacing:0; }
+    .oi .okf { display:inline-flex; align-items:center; gap:4px; margin:3px 0 0 8px; font-size:11px; font-weight:700; text-transform:none; letter-spacing:0; cursor:pointer; }
     .oi .lg { margin-top:3px; font:inherit; font-size:11px; border:1px solid var(--line); border-radius:4px; padding:1px 3px; background:#fff; }
     .oi button { border:1px solid var(--line); background:var(--soft); border-radius:4px; cursor:pointer; font-size:12px; padding:2px 0; }
     button:focus-visible, input:focus-visible { outline:2px solid var(--or); outline-offset:1px; }
   </style>
 </head>
 <body>
-  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v21</div>
+  <div id="ver" style="float:right;font-size:10px;color:#9aa0a6">v22</div>
   <div id="vueOrdre" hidden>
     <h1 id="ordreTtl">Ordre de traitement</h1>
     <div class="sub">Flèches pour changer l'ordre, puis « Enregistrer l'ordre ». La zone 3 suit cet ordre dans chaque case.</div>
@@ -77,6 +79,15 @@
     <div id="taches"></div>
     <button type="button" class="add" id="addTache">+ Ajouter une ressource</button>
   </div>
+  <div class="av">
+    <div class="av-ttl">Tableau de chasse</div>
+    <div class="chk" style="margin-top:0"><input type="checkbox" id="chasse"><label for="chasse" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)">Dans le tableau de chasse</label></div>
+    <div class="row" style="margin-top:6px;gap:6px">
+      <select id="chasseTrim" style="flex:1;border:1px solid var(--line);border-radius:4px;padding:5px;font:inherit"></select>
+      <input type="number" id="jcrm" placeholder="n° jCRM" style="flex:1;border:1px solid var(--line);border-radius:4px;padding:5px;font:inherit">
+    </div>
+    <div class="sub" id="chasseInfo" style="margin:4px 0 0"></div>
+  </div>
   <div class="chk"><input type="checkbox" id="carsat"><label for="carsat" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)">Dossier CARSAT</label></div>
 
   <div class="row">
@@ -103,6 +114,6 @@
   </div>
 
   </div>
-  <script type="module" src="panel.js?v=21"></script>
+  <script type="module" src="panel.js?v=22"></script>
 </body>
 </html>

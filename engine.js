@@ -7,7 +7,8 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=21';
+  ZONE4_TITLE, G4, OBJECTIF_TRIM, PART_SCENARIOS,
+} from './config.js?v=22';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -48,9 +49,9 @@ async function remove(item) { cache.delete(item.id); await board().remove(item).
 
 // Photo du board : toutes les formes et cartes avec leur fiche (lecture des fiches inconnues seulement)
 async function snapshot() {
-  const [shapes, cards, frames] = await Promise.all([
-    board().get({ type: 'shape' }), board().get({ type: 'card' }), board().get({ type: 'frame' })]);
-  const items = [...shapes, ...cards];
+  const [shapes, cards, frames, texts] = await Promise.all([
+    board().get({ type: 'shape' }), board().get({ type: 'card' }), board().get({ type: 'frame' }), board().get({ type: 'text' })]);
+  const items = [...shapes, ...cards, ...texts];
   const inconnus = items.filter((i) => !cache.has(i.id));
   for (let k = 0; k < inconnus.length; k += 40) await Promise.all(inconnus.slice(k, k + 40).map(metaOf));
   return { items: items.map((item) => ({ item, meta: cache.get(item.id) })), frames };
@@ -348,7 +349,8 @@ async function layoutInterne({ pilotes = null } = {}) {
   const H = await layoutZone1(f1, vivants, dossiers, pilotes);
   const top1 = f1.y - f1.height / 2;
   const f2 = await layoutZone2(snap, f1, vivants, dossiers, H, top1);
-  await layoutZone3(snap, f2, vivants, dossiers, H, top1);
+  const f3 = await layoutZone3(snap, f2, vivants, dossiers, H, top1);
+  try { await layoutZone4(snap, f3, vivants, dossiers, H, top1); } catch (e) { console.warn('Zone 4', e); }
   return { dossiers: dossiers.length, nettoyes: orphelins.length, mobiles, ms: Math.round(performance.now() - t0) };
 }
 
@@ -777,6 +779,144 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
   }
   await Promise.all([...syncs, ...s2, ...[...debordements.values()].map(remove)]);
   try { await resizeFrame(f, W, H, top1, f2.x + f2.width / 2 + 200); } catch (e) { console.warn('Réduction du cadre 3 reportée', e); }
+  return f;
+}
+
+
+// ══ ZONE 4 : TABLEAU DE CHASSE (trimestre en cours + suivant) ══
+// Montants et statuts relus dans jCRM par le script local scripts/miro_tableau_chasse_jcrm.py :
+// l'app publie la liste des n° jCRM à suivre (texte « PBH-IDS »), le script répond (texte « PBH-JCRM »).
+export function trimestreDe(d = new Date()) { return `T${Math.floor(d.getMonth() / 3) + 1} ${d.getFullYear()}`; }
+export function trimestresAffiches() {
+  const d = new Date();
+  const t = Math.floor(d.getMonth() / 3);
+  return [trimestreDe(d), t === 3 ? `T1 ${d.getFullYear() + 1}` : `T${t + 2} ${d.getFullYear()}`];
+}
+const rangTrim = (q) => { const m = /T(\d) (\d{4})/.exec(q || ''); return m ? Number(m[2]) * 4 + Number(m[1]) : 0; };
+const keur = (v) => `${Math.round(v).toLocaleString('fr-FR')} k€`;
+const meur = (v) => `${(v / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} M€`;
+const jj = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
+function lireJcrm(items) {
+  const t = items.find((x) => x.item.type === 'text' && (x.item.content || '').includes('PBH-JCRM'));
+  if (!t) return { data: new Map(), maj: null };
+  const brut = t.item.content.replace(/<[^>]+>/g, ' ');
+  const maj = (/maj (\d{2}\/\d{2} \d{2}:\d{2})/.exec(brut) || [])[1] || null;
+  const data = new Map();
+  for (const m of brut.matchAll(/(\d+):([\d.]*):([A-Z?]):(\d{4}-\d{2}-\d{2})?/g)) {
+    data.set(m[1], { montant: m[2] === '' ? null : Number(m[2]), statut: m[3], signeLe: m[4] || null });
+  }
+  return { data, maj };
+}
+
+async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
+  let f = findFrame(snap.frames, 'Tableau de chasse');
+  const W = 2 * G.margin + 2 * (G4.cardW + 2 * G4.cardPad) + G4.colGap;
+  if (!f) {
+    f = await board().createFrame({ title: ZONE4_TITLE, width: W, height: H, style: { fillColor: '#ffffff' },
+      x: f3.x + f3.width / 2 + 200 + W / 2, y: top1 + H / 2 });
+  }
+  if (H > f.height) { try { await resizeFrame(f, f.width, H, top1); } catch (e) { console.warn(e); } }
+  const tous = [...snap.items];
+  const dans = vivants.filter((x) => inFrame(f, x.item));
+  const quarts = trimestresAffiches();
+  const colW = G4.cardW + 2 * G4.cardPad;
+  const colX = (k) => G.margin + k * (colW + G4.colGap);
+
+  // décor (en-têtes + fonds) et registre des n° jCRM
+  for (let k = 0; k < 2; k++) {
+    for (const role of ['bg4', 'hdr4']) {
+      if (dans.some((x) => x.meta.role === role && x.meta.k === k)) continue;
+      const it = await creer(f, 'shape', { shape: 'rectangle', content: '', width: 200, height: role === 'bg4' ? 200 : 90,
+        style: role === 'bg4' ? { fillColor: GRIS_FOND, borderOpacity: 0 }
+          : { fillColor: BLEU, color: '#ffffff', fontSize: 16, fontFamily: 'open_sans', textAlign: 'center', textAlignVertical: 'middle', borderOpacity: 0 } },
+      { role, k });
+      if (role === 'bg4') await board().sendToBack(it).catch(() => {});
+      dans.push({ item: it, meta: cache.get(it.id) });
+    }
+  }
+  const { data: jcrm, maj } = lireJcrm(tous.filter((x) => inFrame(f, x.item)));
+
+  // dossiers du tableau de chasse, rangés par trimestre visé (un trimestre passé glisse dans le trimestre en cours)
+  const cibles = [];
+  for (const d of dossiers.filter((x) => x.meta.chasse)) {
+    let k = quarts.indexOf(d.meta.chasseTrim || quarts[0]);
+    let glisse = null;
+    if (k < 0 && rangTrim(d.meta.chasseTrim) < rangTrim(quarts[0])) { k = 0; glisse = d.meta.chasseTrim; }
+    if (k < 0) continue;
+    const j = d.meta.jcrm ? jcrm.get(String(d.meta.jcrm)) : null;
+    cibles.push({ d, k, glisse, j });
+  }
+  // registre des n° jCRM à relire (pour le script)
+  const ids = [...new Set(dossiers.filter((x) => x.meta.chasse && x.meta.jcrm).map((x) => String(x.meta.jcrm)))].sort();
+  const registre = `<p>PBH-IDS (n° jCRM du tableau de chasse, lu par le script — ne pas modifier) : ${ids.join(',')}</p>`;
+  let reg = dans.find((x) => x.meta.role === 'ids4');
+  if (!reg) {
+    const it = await board().createText({ content: registre, x: f.x, y: f.y, width: W - 2 * G.margin, style: { fontSize: 10, color: '#9aa0a6' } });
+    await setMeta(it, { role: 'ids4' });
+    await addToFrame(f, it);
+    reg = { item: await board().getById(it.id) };
+  }
+  const syncs = [];
+  const push = (p) => { if (p) syncs.push(p); };
+  push(update(reg.item, f, W / 2, H - 22, { content: registre }));
+
+  // cartes
+  const exist = new Map(dans.filter((x) => x.meta.role === 'chasse').map((x) => [x.meta.ref, x]));
+  const garder = new Set();
+  for (const c of cibles) {
+    const m = c.d.meta;
+    const fields = [{ value: m.pilote, fillColor: BLEU, textColor: '#ffffff' }];
+    if (c.j && c.j.montant !== null) fields.push({ value: keur(c.j.montant), fillColor: OR, textColor: BLEU });
+    else fields.push({ value: m.jcrm ? 'montant jCRM à relire' : 'n° jCRM manquant', fillColor: '#e7e7e7', textColor: '#5b6478' });
+    if (c.j?.statut === 'G') fields.push({ value: `Signé le ${jj(c.j.signeLe)}`, fillColor: '#1e8e4e', textColor: '#ffffff' });
+    if (c.j?.statut === 'P') fields.push({ value: 'Perdu', fillColor: '#c8341f', textColor: '#ffffff' });
+    if (c.glisse) fields.push({ value: `visé ${c.glisse}`, fillColor: '#f0a020', textColor: '#ffffff' });
+    if (m.chasseLe) fields.push({ value: `ajouté ${jj(m.chasseLe)}`, fillColor: '#eef1f7', textColor: '#5b6478' });
+    const theme4 = c.j?.statut === 'G' ? '#1e8e4e' : c.j?.statut === 'P' ? '#c8341f' : theme(m);
+    const data = { title: esc(tronque(m.titre, G4.titreMax)), style: { cardTheme: theme4 }, fields };
+    const sig = JSON.stringify(data);
+    let x = exist.get(c.d.item.id);
+    if (!x) {
+      const it = await creer(f, 'card', { ...data, width: G4.cardW }, { role: 'chasse', ref: c.d.item.id, sig });
+      x = { item: it, meta: cache.get(it.id) };
+    } else if (x.meta.sig !== sig) {
+      x.item.title = data.title; x.item.style = { ...x.item.style, ...data.style }; x.item.fields = data.fields;
+      await setMeta(x.item, { ...x.meta, sig });
+      x.modifie = true;
+    }
+    c.x = x;
+    garder.add(x.item.id);
+  }
+  await Promise.all(dans.filter((x) => x.meta.role === 'chasse' && !garder.has(x.item.id)).map((x) => remove(x.item)));
+
+  // en-têtes, fonds, rangement (signées en tête, puis montant décroissant)
+  for (let k = 0; k < 2; k++) {
+    const q = quarts[k];
+    const list = cibles.filter((c) => c.k === k).sort((a, b) =>
+      ((b.j?.statut === 'G') - (a.j?.statut === 'G')) || ((b.j?.montant || 0) - (a.j?.montant || 0)));
+    const actifs = list.filter((c) => c.j?.statut !== 'P');
+    const total = actifs.reduce((s, c) => s + (c.j?.montant || 0), 0);
+    const signe = actifs.filter((c) => c.j?.statut === 'G').reduce((s, c) => s + (c.j?.montant || 0), 0);
+    const reste = total - signe;
+    const obj = OBJECTIF_TRIM[q.slice(-4)] || 2750;
+    const [pNeg, pPos] = PART_SCENARIOS;
+    const hdr = `<p><strong>${q} · ${meur(total)} / ${meur(obj)} (${Math.round((100 * total) / obj)} %) · ${actifs.length} affaire${actifs.length > 1 ? 's' : ''}</strong></p>`
+      + `<p>signé ${keur(signe)} · scénarios ${meur(signe + pNeg * reste)} → ${meur(signe + pPos * reste)}${k === 0 && maj ? ` · jCRM ${maj}` : ''}</p>`;
+    for (const x of dans) {
+      if (x.meta.k !== k) continue;
+      if (x.meta.role === 'hdr4') push(update(x.item, f, colX(k) + colW / 2, G4.top - 45 - 8, { width: colW, height: 90, content: hdr }));
+      if (x.meta.role === 'bg4') { const h = H - G4.top - G.margin - 30; push(update(x.item, f, colX(k) + colW / 2, G4.top + h / 2, { width: colW, height: h })); }
+    }
+    let y = G4.top + 12;
+    for (const c of list) {
+      const h = c.x.item.height || 88;
+      const p = update(c.x.item, f, colX(k) + G4.cardPad + G4.cardW / 2, y + h / 2);
+      if (p) push(p); else if (c.x.modifie) push(syncSur(c.x.item, f));
+      y += h + G4.gap;
+    }
+  }
+  await Promise.all(syncs);
+  try { await resizeFrame(f, W, H, top1, f3.x + f3.width / 2 + 200); } catch (e) { console.warn('Cadre 4', e); }
 }
 
 export async function stats() {
