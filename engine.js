@@ -7,7 +7,7 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=6';
+} from './config.js?v=7';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -418,9 +418,10 @@ function semaineISO(d) {
   const debut = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
   return t.getUTCFullYear() * 53 + Math.ceil(((t - debut) / 86400000 + 1) / 7);
 }
+// 0 = cette semaine (échéances dépassées comprises), 1 = S+1, au-delà : hors zone 3
 function horizon(t) {
-  if (t.echeance) return Math.max(0, Math.min(3, semaineISO(new Date(t.echeance)) - semaineISO(new Date())));
-  return { P1: 0, P2: 1, P3: 2 }[t.priorite] ?? 3;
+  if (t.echeance) return Math.max(0, semaineISO(new Date(t.echeance)) - semaineISO(new Date()));
+  return { P1: 0, P2: 1 }[t.priorite] ?? 9;
 }
 
 async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
@@ -430,15 +431,18 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
       x: f2.x + f2.width / 2 + 200 + G.frameW / 2, y: top1 + H / 2 });
   }
   if (H > f.height) await resizeFrame(f, f.width, H, top1);
-  const dans = vivants.filter((x) => inFrame(f, x.item));
-  const W = f.width;
-  const colW = (W - 2 * G.margin - G3.labelW - G3.colGap * RESSOURCES.length) / RESSOURCES.length;
+  const NH = HORIZONS.length;
+  // une seule colonne de cartes par avant-vente : largeur du cadre ajustée au contenu
+  const colW = G3.cardW + 2 * G3.cardPad;
+  const W = 2 * G.margin + G3.labelW + RESSOURCES.length * (colW + G3.colGap);
   const colX = (j) => G.margin + G3.labelW + G3.colGap + j * (colW + G3.colGap);
-  const rowH = (H - G3.top - G.margin - 3 * G3.rowGap) / 4;
+  const rowH = (H - G3.top - G.margin - (NH - 1) * G3.rowGap) / NH;
   const rowY = (r) => G3.top + r * (rowH + G3.rowGap);
-  const parLigne = Math.max(1, Math.floor((colW - 16 + G3.cardGapX) / (G3.cardW + G3.cardGapX)));
-  const lignesCase = Math.max(1, Math.floor((rowH - 16) / G3.rowStep));
-  const capacite = parLigne * lignesCase;
+  const capacite = Math.max(1, Math.floor((rowH - 16) / G3.rowStep));
+  // décor d'horizons supprimés (ancienne grille à 4 lignes)
+  const perimes = vivants.filter((x) => inFrame(f, x.item) && ['lab3', 'bg3', 'ovf3'].includes(x.meta.role) && x.meta.r >= NH);
+  await Promise.all(perimes.map((x) => remove(x.item)));
+  const dans = vivants.filter((x) => inFrame(f, x.item) && !perimes.includes(x));
 
   // décor manquant
   const decor = [];
@@ -462,7 +466,9 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
     for (const t of tachesDe(d.meta)) {
       const av = t.ressource;
       if (!RESSOURCES.includes(av) || !(LIVRABLES_PLAN.includes(t.livrable) || LIVRABLES_DEVIS.includes(t.livrable))) continue;
-      cibles.push({ d, t, av, r: horizon(t), livr: [t.livrable], key: `${d.item.id}|${av}|${t.livrable}` });
+      const r = horizon(t);
+      if (r >= NH) continue;                         // au-delà de S+1 : pas affiché
+      cibles.push({ d, t, av, r, livr: [t.livrable], key: `${d.item.id}|${av}|${t.livrable}` });
       if (LIVRABLES_PLAN.includes(t.livrable)) compte[av].plans++;
       if (LIVRABLES_DEVIS.includes(t.livrable)) compte[av].devis++;
     }
@@ -510,14 +516,14 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
   const ordre = (a, b) => (a.t.echeance || '9').localeCompare(b.t.echeance || '9') || ordreEnjeu(a.d.meta.enjeu) - ordreEnjeu(b.d.meta.enjeu);
   const s2 = [];
   for (const [j, av] of RESSOURCES.entries()) {
-    for (let r = 0; r < 4; r++) {
+    for (let r = 0; r < NH; r++) {
       const list = cibles.filter((c) => c.av === av && c.r === r).sort(ordre);
-      const pad = (colW - parLigne * G3.cardW - (parLigne - 1) * G3.cardGapX) / 2;
+      const pad = G3.cardPad;
       list.forEach((c, i) => {
         const vis = i < capacite;
         const k = vis ? i : capacite - 1;           // au-delà de la capacité : empilées sous la dernière
-        const rx = colX(j) + pad + G3.cardW / 2 + (k % parLigne) * (G3.cardW + G3.cardGapX);
-        const ry = rowY(r) + 8 + G3.rowStep / 2 + Math.floor(k / parLigne) * G3.rowStep;
+        const rx = colX(j) + pad + G3.cardW / 2;
+        const ry = rowY(r) + 8 + G3.rowStep / 2 + k * G3.rowStep;
         const p = update(c.x.item, f, rx, ry);
         if (p) push(p); else if (c.x.modifie) push(c.x.item.sync());
       });
@@ -535,7 +541,7 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
     }
   }
   await Promise.all([...syncs, ...s2, ...[...debordements.values()].map(remove)]);
-  try { await resizeFrame(f, f.width, H, top1); } catch (e) { console.warn('Réduction du cadre 3 reportée', e); }
+  try { await resizeFrame(f, W, H, top1); } catch (e) { console.warn('Réduction du cadre 3 reportée', e); }
 }
 
 export async function stats() {
