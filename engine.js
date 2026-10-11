@@ -7,7 +7,7 @@
 import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
-} from './config.js?v=8';
+} from './config.js?v=9';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -263,7 +263,8 @@ async function layoutZone1(f, vivants, dossiers, pilotes) {
         const k = s.list.filter((x) => x.meta.enjeu === e.code).length;
         if (!k) continue;
         const w = Math.max(8, (bw * k) / s.list.length);
-        barsCibles.push({ key: `${s.p.code}|${e.code}`, pilote: s.p.code, e, x: bx + w / 2, w });
+        const pct = Math.round((100 * k) / s.list.length);
+        barsCibles.push({ key: `${s.p.code}|${e.code}`, pilote: s.p.code, e, x: bx + w / 2, w, pct });
         bx += w;
       }
     }
@@ -287,9 +288,12 @@ async function layoutZone1(f, vivants, dossiers, pilotes) {
   for (const b of barsCibles) {
     let it = barsExist.get(b.key);
     barsExist.delete(b.key);
-    const style = { fillColor: b.e.fill, borderColor: '#1a1a1a', borderWidth: 1, borderOpacity: b.e.fill === '#ffffff' ? 1 : 0 };
-    if (!it) it = await creer(f, 'shape', { shape: 'rectangle', content: '', width: b.w, height: G.barH, style }, { role: 'bar', pilote: b.pilote, enjeu: b.e.code });
-    const p = update(it, f, b.x, G.top + G.barH / 2 + 2, { width: b.w, height: G.barH });
+    const style = { fillColor: b.e.fill, borderColor: '#1a1a1a', borderWidth: 1, borderOpacity: b.e.fill === '#ffffff' ? 1 : 0,
+      color: b.e.text, fontSize: 10, fontFamily: 'open_sans', textAlign: 'center', textAlignVertical: 'middle' };
+    const txt = b.w >= 30 ? `<p>${b.pct}%</p>` : '';     // pourcentage affiché si le segment est assez large
+    if (!it) it = await creer(f, 'shape', { shape: 'rectangle', content: txt, width: b.w, height: G.barH, style }, { role: 'bar', pilote: b.pilote, enjeu: b.e.code });
+    const restyle = it.style?.fontSize !== 10 && Number(it.style?.fontSize) !== 10;
+    const p = update(it, f, b.x, G.top + G.barH / 2 + 2, { width: b.w, height: G.barH, content: txt, ...(restyle ? { style } : {}) });
     if (p) s2.push(p);
   }
   // losanges CARSAT
