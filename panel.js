@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=3';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers } from './engine.js?v=3';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=4';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers } from './engine.js?v=4';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -100,7 +100,7 @@ $('init').onclick = () => busy('Préparation du board…', async () => {
 });
 $('relayout').onclick = () => busy('Rangement…', async () => {
   const r = await layout();
-  status(r ? `${r.dossiers} dossiers rangés en ${r.ms} ms.` : "Board non initialisé.");
+  status(r ? `${r.dossiers} dossiers rangés en ${Math.round(r.ms / 100) / 10} s.` : "Board non initialisé.");
 });
 
 $('import').onclick = () => busy('Lecture du fichier d\'import…', async () => {
@@ -129,4 +129,11 @@ miro.board.ui.on('selection:update', ({ items }) => charger(items));
 
 fill(null);
 miro.board.getSelection().then(charger);   // élément déjà sélectionné à l'ouverture du panneau
-getZone1().then((f) => { if (!f) status('Board vide : clique « Préparer le board » pour créer la zone 1.'); });
+// À l'ouverture du panneau : rangement automatique (compteurs, zones 2 et 3 toujours à jour)
+getZone1().then((f) => {
+  if (!f) { status('Board vide : clique « Préparer le board » pour créer la zone 1.'); return; }
+  busy('Mise à jour du board…', async () => {
+    const r = await layout();
+    status(r ? `Board à jour : ${r.dossiers} dossiers (${Math.round(r.ms / 100) / 10} s).` : '');
+  });
+});
