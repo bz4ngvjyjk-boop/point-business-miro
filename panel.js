@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers } from './engine.js';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=3';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers } from './engine.js?v=3';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -119,7 +119,7 @@ async function charger(items) {
   let item = items[0];
   if (item.type === 'card') {
     const m = await item.getMetadata('pbh').catch(() => null);
-    if (!m || m.role !== 'prio' || !m.ref) return;
+    if (!m || !['prio', 'av'].includes(m.role) || !m.ref) return;
     item = await miro.board.getById(m.ref).catch(() => null);
   }
   const d = await readDossier(item);

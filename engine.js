@@ -1,44 +1,88 @@
-// Moteur : création des dossiers et rangement automatique de la zone 1.
-// Source de vérité = métadonnées de l'app (clé META) posées sur chaque pastille.
-import { PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, ZONE1_TITLE, ZONE2_TITLE,
-  COLONNES_PRIO, LIBELLE_PRIO, META } from './config.js';
+// Moteur de l'app « Point business hebdo ».
+// Source de vérité = métadonnées de l'app (clé META) posées sur chaque pastille dossier (zone 1).
+// Les zones 2 et 3 sont des reflets recalculés à partir de ces fiches.
+//
+// Performance : les métadonnées sont lues une seule fois puis gardées en mémoire (cache) tant que
+// le panneau est ouvert ; un rangement ne synchronise que les objets réellement modifiés.
+import {
+  PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
+  COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
+} from './config.js?v=3';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
+const ordreEnjeu = (c) => ENJEUX.findIndex((e) => e.code === c);
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const r1 = (v) => Math.round(v);
 
-// ── Cadre de la zone 1 ──
-export async function getZone1() {
-  const frames = await board().get({ type: 'frame' });
-  return frames.find((f) => (f.title || '').includes('Avancement avant-vente')) || null;
+// ── Cache des métadonnées ──
+const cache = new Map();             // id -> meta (ou null si l'objet n'a pas de fiche)
+async function setMeta(item, meta) { await item.setMetadata(META, meta); cache.set(item.id, meta); }
+async function metaOf(item) {
+  if (!cache.has(item.id)) cache.set(item.id, (await item.getMetadata(META).catch(() => null)) || null);
+  return cache.get(item.id);
+}
+async function remove(item) { cache.delete(item.id); await board().remove(item).catch(() => {}); }
+
+// Photo du board : toutes les formes et cartes avec leur fiche (lecture des fiches inconnues seulement)
+async function snapshot() {
+  const [shapes, cards, frames] = await Promise.all([
+    board().get({ type: 'shape' }), board().get({ type: 'card' }), board().get({ type: 'frame' })]);
+  const items = [...shapes, ...cards];
+  const inconnus = items.filter((i) => !cache.has(i.id));
+  for (let k = 0; k < inconnus.length; k += 40) await Promise.all(inconnus.slice(k, k + 40).map(metaOf));
+  return { items: items.map((item) => ({ item, meta: cache.get(item.id) })), frames };
 }
 
-export async function initBoard() {
-  let f = await getZone1();
-  if (f) return f;
-  f = await board().createFrame({
-    title: ZONE1_TITLE, x: 0, y: 0, width: G.frameW, height: G.frameH,
-    style: { fillColor: '#ffffff' },
-  });
-  for (const p of PILOTES) await createDecor(f, p);
-  await layout();
-  return f;
-}
+// ── Cadres ──
+const findFrame = (frames, mot) => frames.find((f) => (f.title || '').includes(mot)) || null;
+export async function getZone1() { return findFrame(await board().get({ type: 'frame' }), 'Avancement avant-vente'); }
 
-async function createDecor(frame, p) {
-  const bg = await board().createShape({
-    shape: 'rectangle', content: '', width: 200, height: 200, x: frame.x, y: frame.y,
-    style: { fillColor: GRIS_FOND, borderColor: BLEU, borderWidth: 2, borderOpacity: 1 },
-  });
-  await bg.setMetadata(META, { role: 'bg', pilote: p.code });
-  await addToFrame(frame, bg);
-  const hdr = await board().createShape({
-    shape: 'rectangle', content: '', width: 200, height: G.hdrH, x: frame.x, y: frame.y,
-    style: { fillColor: BLEU, color: '#ffffff', fontSize: 14, fontFamily: 'open_sans',
-      textAlign: 'center', textAlignVertical: 'top', borderOpacity: 0 },
-  });
-  await hdr.setMetadata(META, { role: 'hdr', pilote: p.code });
-  await addToFrame(frame, hdr);
+const inFrame = (f, it) => it.parentId === f.id || (!it.parentId
+  && Math.abs(it.x - f.x) < f.width / 2 && Math.abs(it.y - f.y) < f.height / 2);
+
+// Rattachement au cadre : Miro le refuse parfois ; on retente, sinon l'objet reste libre mais
+// posé dans le cadre (l'app le repère alors par sa position).
+async function addToFrame(f, item) {
+  try { await f.add(item); return; } catch (e) { /* nouvelle tentative */ }
+  try { await new Promise((r) => setTimeout(r, 400)); item.x += 1; await item.sync(); await f.add(item); } catch (e) { /* libre */ }
+}
+function place(item, f, rx, ry) {
+  if (item.relativeTo === 'parent_top_left') { item.x = rx; item.y = ry; }
+  else { item.x = f.x - f.width / 2 + rx; item.y = f.y - f.height / 2 + ry; }
+}
+// Déplace / redimensionne / restyle ; renvoie une promesse de synchro seulement si quelque chose change
+function update(item, f, rx, ry, patch = {}) {
+  const avant = JSON.stringify([r1(item.x), r1(item.y), r1(item.width || 0), r1(item.height || 0), item.content, item.title, item.style, item.fields]);
+  if (patch.width) item.width = patch.width;
+  if (patch.height) item.height = patch.height;
+  if (patch.content !== undefined) item.content = patch.content;
+  if (patch.title !== undefined) item.title = patch.title;
+  if (patch.style) item.style = { ...item.style, ...patch.style };
+  if (patch.fields) item.fields = patch.fields;
+  if (rx !== null) place(item, f, rx, ry);
+  const apres = JSON.stringify([r1(item.x), r1(item.y), r1(item.width || 0), r1(item.height || 0), item.content, item.title, item.style, item.fields]);
+  return avant === apres ? null : item.sync();
+}
+// Crée un objet de décor/reflet dans un cadre, avec sa fiche
+async function creer(f, kind, props, meta) {
+  const item = kind === 'card'
+    ? await board().createCard({ ...props, x: f.x, y: f.y })
+    : await board().createShape({ ...props, x: f.x, y: f.y });
+  await setMeta(item, meta);
+  await addToFrame(f, item);
+  const relu = await board().getById(item.id);
+  cache.set(relu.id, meta);
+  return relu;
+}
+// Redimensionne un cadre en gardant son coin haut-gauche (taille d'abord, position ensuite)
+async function resizeFrame(f, w, h, top, left) {
+  const t = top ?? f.y - f.height / 2, l = left ?? f.x - f.width / 2;
+  if (r1(f.width) !== r1(w) || r1(f.height) !== r1(h)) { f.width = w; f.height = h; await f.sync(); }
+  if (r1(f.x) !== r1(l + w / 2) || r1(f.y) !== r1(t + h / 2)) { f.x = l + w / 2; f.y = t + h / 2; await f.sync(); }
+}
+async function ensureFrame(frames, mot, title, x, y, w, h) {
+  return findFrame(frames, mot) || board().createFrame({ title, x, y, width: w, height: h, style: { fillColor: '#ffffff' } });
 }
 
 // ── Pastilles dossier ──
@@ -47,267 +91,191 @@ function cardStyle(d) {
   return {
     fillColor: e.fill, color: e.text, fontSize: 12, fontFamily: 'open_sans',
     textAlign: 'center', textAlignVertical: 'middle',
-    borderColor: e.fill === '#ffffff' ? '#1a1a1a' : '#ffffff',
-    borderWidth: 2, borderOpacity: 1,
+    borderColor: e.fill === '#ffffff' ? '#1a1a1a' : '#ffffff', borderWidth: 2, borderOpacity: 1,
   };
+}
+const contenu = (d) => `<p><strong>${esc(d.titre)}</strong></p>`;
+
+export async function initBoard() {
+  let f = await getZone1();
+  if (!f) f = await board().createFrame({ title: ZONE1_TITLE, x: 0, y: 0, width: G.frameW, height: G.frameH, style: { fillColor: '#ffffff' } });
+  await layout();
+  return f;
 }
 
 export async function saveDossier(d, itemId) {
-  const frame = await getZone1();
-  if (!frame) throw new Error("Board non initialisé : clique d'abord sur « Préparer le board ».");
+  const f = await getZone1();
+  if (!f) throw new Error("Board non initialisé : clique d'abord sur « Préparer le board ».");
   let item;
+  const meta = { role: 'dossier', ...d, maj: new Date().toISOString() };
   if (itemId) {
     item = await board().getById(itemId);
-    item.content = `<p><strong>${esc(d.titre)}</strong></p>`;
+    item.content = contenu(d);
     item.style = { ...item.style, ...cardStyle(d) };
     await item.sync();
+    await setMeta(item, meta);
   } else {
-    item = await board().createShape({
-      shape: 'rectangle', content: `<p><strong>${esc(d.titre)}</strong></p>`,
-      width: G.cardW, height: G.cardH, x: frame.x, y: frame.y, style: cardStyle(d),
-    });
-    await addToFrame(frame, item);
+    item = await creer(f, 'shape', { shape: 'rectangle', content: contenu(d), width: G.cardW, height: G.cardH, style: cardStyle(d) }, meta);
   }
-  await item.setMetadata(META, { role: 'dossier', ...d, maj: new Date().toISOString() });
   await layout();
   return item;
 }
 
-// Import en masse (fichier local import.json) : création par lots, un seul rangement final.
-// Les dossiers déjà présents (même titre + pilote) ne sont pas recréés.
-export async function importDossiers(list, onProgress) {
-  const frame = await getZone1();
-  if (!frame) throw new Error("Board non initialisé : clique d'abord sur « Préparer le board ».");
-  // Réparation : pastilles créées sans fiche (écriture refusée par Miro) -> supprimées puis recréées
-  const sansFiche = { length: await removeOrphans(frame) };
-  const deja = new Set((await zoneItems(frame)).filter((x) => x.meta.role === 'dossier')
-    .map((x) => `${x.meta.pilote}|${x.meta.titre}`));
-  const todo = list.filter((d) => !deja.has(`${d.pilote}|${d.titre}`));
-  const retry = async (fn) => {
-    for (let k = 0; ; k++) {
-      try { return await fn(); }
-      catch (e) { if (k >= 3) throw e; await new Promise((r) => setTimeout(r, 800 * (k + 1))); }
-    }
-  };
-  // point de dépôt libre, bien à l'intérieur du cadre (bande basse, sous les sections)
-  const dropX = frame.x - frame.width / 2 + G.margin + G.cardW;
-  const dropY = frame.y + frame.height / 2 - G.margin / 2 - 4;
-  const LOT = 4;
-  let echecs = 0;
-  for (let i = 0; i < todo.length; i += LOT) {
-    await Promise.all(todo.slice(i, i + LOT).map(async (d, k) => {
-      let item;
-      try {
-        item = await retry(() => board().createShape({
-          shape: 'rectangle', content: `<p><strong>${esc(d.titre)}</strong></p>`,
-          width: G.cardW, height: G.cardH, x: dropX + k * (G.cardW + G.gapX), y: dropY, style: cardStyle(d),
-        }));
-        await retry(() => item.setMetadata(META, { role: 'dossier', ...d, maj: new Date().toISOString() }));
-        await addToFrame(frame, item);
-      } catch (e) {                                  // jamais de pastille sans fiche ni hors cadre
-        echecs++;
-        console.error(d.titre, e);
-        if (item) await board().remove(item).catch(() => {});
-      }
-    }));
-    onProgress?.(Math.min(i + LOT, todo.length), todo.length);
-  }
-  const r = await layout();
-  return { crees: todo.length - echecs, echecs, ignores: list.length - todo.length, repares: sansFiche.length, ...r };
-}
-
 export async function deleteDossier(itemId) {
-  const item = await board().getById(itemId);
-  await board().remove(item);
+  await remove(await board().getById(itemId));
   await layout();
 }
 
 export async function readDossier(item) {
   if (!item || item.type !== 'shape') return null;
-  const m = await item.getMetadata(META);
+  const m = await metaOf(item);
   return m && m.role === 'dossier' ? m : null;
 }
 
-// Liste des objets de l'app dans la zone 1, avec leurs métadonnées.
-async function zoneItems(frame) {
-  const children = await board().get({ type: 'shape' });
-  const mine = children.filter((s) => inFrame(frame, s));
-  const metas = await Promise.all(mine.map((s) => s.getMetadata(META)));
-  return mine.map((s, i) => ({ item: s, meta: metas[i] })).filter((x) => x.meta);
+// Import en masse (import.json local) : création par lots, un seul rangement final.
+export async function importDossiers(list, onProgress) {
+  const f = await getZone1();
+  if (!f) throw new Error("Board non initialisé : clique d'abord sur « Préparer le board ».");
+  const snap = await snapshot();
+  const deja = new Set(snap.items.filter((x) => x.meta?.role === 'dossier').map((x) => `${x.meta.pilote}|${x.meta.titre}`));
+  const todo = list.filter((d) => !deja.has(`${d.pilote}|${d.titre}`));
+  let echecs = 0;
+  for (let i = 0; i < todo.length; i += 4) {
+    await Promise.all(todo.slice(i, i + 4).map(async (d) => {
+      try {
+        await creer(f, 'shape', { shape: 'rectangle', content: contenu(d), width: G.cardW, height: G.cardH, style: cardStyle(d) },
+          { role: 'dossier', ...d, maj: new Date().toISOString() });
+      } catch (e) { echecs++; console.error(d.titre, e); }
+    }));
+    onProgress?.(Math.min(i + 4, todo.length), todo.length);
+  }
+  const r = await layout();
+  return { crees: todo.length - echecs, echecs, ignores: list.length - todo.length, repares: 0, ...r };
 }
 
-// Rattachement au cadre : Miro le refuse parfois sans raison apparente ; on retente après un
-// léger déplacement, sinon l'objet reste libre mais posé dans le cadre (l'app le repère par position).
-async function addToFrame(frame, item) {
-  try { await frame.add(item); return true; } catch (e) { /* nouvelle tentative */ }
-  try {
-    await new Promise((r) => setTimeout(r, 400));
-    item.x += 1; await item.sync();
-    await frame.add(item); return true;
-  } catch (e) { return false; }
-}
-const inFrame = (frame, s) => s.parentId === frame.id || (!s.parentId
-  && Math.abs(s.x - frame.x) < frame.width / 2 && Math.abs(s.y - frame.y) < frame.height / 2);
-
-// Nettoyage : tout objet du cadre sans fiche de l'app (écriture interrompue) est supprimé.
-async function removeOrphans(frame) {
-  const shapes = await board().get({ type: 'shape' });
-  const L = frame.x - frame.width / 2, R = frame.x + frame.width / 2;
-  const T = frame.y - frame.height / 2, B = frame.y + frame.height / 2;
-  const cand = shapes.filter((s) => s.parentId === frame.id
-    || (!s.parentId && s.x > L && s.x < R && s.y > T && s.y < B));
-  const metas = await Promise.all(cand.map((s) => s.getMetadata(META)));
-  const orphans = cand.filter((s, i) => !metas[i]);
-  for (const s of orphans) await board().remove(s).catch(() => {});
-  return orphans.length;
-}
-
-// Coordonnées : on raisonne en relatif au coin haut-gauche du cadre.
-function place(item, frame, relX, relY) {
-  if (item.relativeTo === 'parent_top_left') { item.x = relX; item.y = relY; }
-  else { item.x = frame.x - frame.width / 2 + relX; item.y = frame.y - frame.height / 2 + relY; }
-}
-
-// ── Rangement : colonnes proportionnelles au nombre de dossiers de chaque pilote ──
+// ══ RANGEMENT GÉNÉRAL ══
 export async function layout() {
   const t0 = performance.now();
-  const frame = await getZone1();
-  if (!frame) return null;
-  const nettoyes = await removeOrphans(frame);
-  let all = await zoneItems(frame);
-  // pilote ajouté au référentiel (ex. CD) : on crée sa section si elle manque
-  const manquants = PILOTES.filter((p) => !all.some((x) => x.meta.role === 'hdr' && x.meta.pilote === p.code));
-  if (manquants.length) {
-    for (const p of manquants) await createDecor(frame, p);
-    all = await zoneItems(frame);
-  }
-  const dossiers = all.filter((x) => x.meta.role === 'dossier');
-  const usableH = G.frameH - G.top - G.margin;
-  const rows = Math.min(G.maxRows, Math.floor((usableH + G.gapY) / (G.cardH + G.gapY)));
-  // hauteur utile = 25 lignes : le cadre est ramené à son contenu (bord haut fixe)
+  const snap = await snapshot();
+  const f1 = findFrame(snap.frames, 'Avancement avant-vente');
+  if (!f1) return null;
+
+  // Nettoyage : objets du cadre 1 sans fiche (écriture interrompue)
+  const orphelins = snap.items.filter((x) => !x.meta && x.item.type === 'shape' && inFrame(f1, x.item));
+  for (const o of orphelins) await remove(o.item);
+  const vivants = snap.items.filter((x) => x.meta);
+  const dossiers = vivants.filter((x) => x.meta.role === 'dossier');
+
+  const H = await layoutZone1(f1, vivants, dossiers);
+  const top1 = f1.y - f1.height / 2;
+  const f2 = await layoutZone2(snap, f1, vivants, dossiers, H, top1);
+  await layoutZone3(snap, f2, vivants, dossiers, H, top1);
+  return { dossiers: dossiers.length, nettoyes: orphelins.length, ms: Math.round(performance.now() - t0) };
+}
+
+// ── Zone 1 : sections par pilote, 25 dossiers max par colonne ──
+async function layoutZone1(f, vivants, dossiers) {
+  const dans = vivants.filter((x) => inFrame(f, x.item));
+  const rows = G.maxRows;
   const secH = G.hdrH + G.barH + 8 + rows * (G.cardH + G.gapY) + G.sectionPad;
   const frameH = G.top - G.hdrH + secH + G.margin;
-  const order = (c) => ENJEUX.findIndex((e) => e.code === c);
 
-  // largeur de chaque section
+  // décor manquant (nouveau pilote)
+  for (const p of PILOTES) {
+    if (!dans.some((x) => x.meta.role === 'bg' && x.meta.pilote === p.code)) {
+      const it = await creer(f, 'shape', { shape: 'rectangle', content: '', width: 200, height: 200,
+        style: { fillColor: GRIS_FOND, borderColor: BLEU, borderWidth: 2, borderOpacity: 1 } }, { role: 'bg', pilote: p.code });
+      await board().sendToBack(it).catch(() => {});
+      dans.push({ item: it, meta: cache.get(it.id) });
+    }
+    if (!dans.some((x) => x.meta.role === 'hdr' && x.meta.pilote === p.code)) {
+      const it = await creer(f, 'shape', { shape: 'rectangle', content: '', width: 200, height: G.hdrH,
+        style: { fillColor: BLEU, color: '#ffffff', fontSize: 14, fontFamily: 'open_sans', textAlign: 'center', textAlignVertical: 'top', borderOpacity: 0 } },
+      { role: 'hdr', pilote: p.code });
+      dans.push({ item: it, meta: cache.get(it.id) });
+    }
+  }
+
   const secs = PILOTES.map((p) => {
     const list = dossiers.filter((x) => x.meta.pilote === p.code)
-      .sort((a, b) => order(a.meta.enjeu) - order(b.meta.enjeu) || a.meta.titre.localeCompare(b.meta.titre, 'fr'));
+      .sort((a, b) => ordreEnjeu(a.meta.enjeu) - ordreEnjeu(b.meta.enjeu) || a.meta.titre.localeCompare(b.meta.titre, 'fr'));
     const cols = Math.max(1, Math.ceil(list.length / rows));
-    const w = cols * (G.cardW + G.gapX) - G.gapX + 2 * G.sectionPad;
-    return { p, list, cols, w };
+    return { p, list, w: cols * (G.cardW + G.gapX) - G.gapX + 2 * G.sectionPad };
   });
-  const totalW = secs.reduce((s, x) => s + x.w, 0) + G.sectionGap * (secs.length - 1) + 2 * G.margin;
-  const frameW = Math.max(G.frameW, totalW);
-  // Redimensionnement du cadre, bord haut-gauche fixe. Miro refuse de réduire un cadre tant que
-  // des objets dépassent : on agrandit d'abord si besoin, on réduit à la fin (après rangement).
-  const resize = async (w, h) => {
-    if (Math.round(frame.width) === Math.round(w) && Math.round(frame.height) === Math.round(h)) return;
-    const left = frame.x - frame.width / 2, top = frame.y - frame.height / 2;
-    frame.width = w; frame.height = h; frame.x = left + w / 2; frame.y = top + h / 2;
-    await frame.sync();
-  };
-  await resize(Math.max(frame.width, frameW), Math.max(frame.height, frameH));
+  const contentW = secs.reduce((s, x) => s + x.w, 0) + G.sectionGap * (secs.length - 1);
+  const frameW = Math.max(G.frameW, contentW + 2 * G.margin);
+  const top = f.y - f.height / 2, left = f.x - f.width / 2;
+  await resizeFrame(f, Math.max(f.width, frameW), Math.max(f.height, frameH), top, left);
 
   const syncs = [];
-  const moveTo = (item, rx, ry, w, h) => {
-    const before = [item.x, item.y, item.width, item.height].map(Math.round).join();
-    if (w) item.width = w;
-    if (h) item.height = h;
-    place(item, frame, rx, ry);
-    if ([item.x, item.y, item.width, item.height].map(Math.round).join() !== before) syncs.push(item.sync());
-  };
+  const push = (p) => { if (p) syncs.push(p); };
+  const barsExist = new Map(dans.filter((x) => x.meta.role === 'bar').map((x) => [`${x.meta.pilote}|${x.meta.enjeu}`, x.item]));
+  const losExist = new Map(dans.filter((x) => x.meta.role === 'carsat').map((x) => [x.meta.ref, x.item]));
+  const barsCibles = [], losCibles = [];
 
-  // supprime les anciennes barres de répartition (recréées ci-dessous)
-  const bars = all.filter((x) => x.meta.role === 'bar').map((x) => x.item);
-  if (bars.length) await Promise.all(bars.map((b) => board().remove(b)));
-
-  const losanges = [];
-  let x0 = (frameW - (totalW - 2 * G.margin)) / 2;
-  const newBars = [];
+  let x0 = (frameW - contentW) / 2;
   for (const s of secs) {
-    const left = x0;
-    const bg = all.find((x) => x.meta.role === 'bg' && x.meta.pilote === s.p.code);
-    const hdr = all.find((x) => x.meta.role === 'hdr' && x.meta.pilote === s.p.code);
-    if (bg) moveTo(bg.item, left + s.w / 2, G.top - G.hdrH + secH / 2, s.w, secH);
+    const left0 = x0;
+    const bg = dans.find((x) => x.meta.role === 'bg' && x.meta.pilote === s.p.code);
+    const hdr = dans.find((x) => x.meta.role === 'hdr' && x.meta.pilote === s.p.code);
+    if (bg) push(update(bg.item, f, left0 + s.w / 2, G.top - G.hdrH + secH / 2, { width: s.w, height: secH }));
     if (hdr) {
-      const txt = `<p><strong>${s.p.code} · ${esc(s.p.nom)}</strong></p><p>${s.list.length} dossier${s.list.length > 1 ? 's' : ''}</p>`;
-      if (hdr.item.content !== txt) { hdr.item.content = txt; }
-      moveTo(hdr.item, left + s.w / 2, G.top - G.hdrH / 2, s.w, G.hdrH);
-      syncs.push(hdr.item.sync());
+      const n = s.list.length;
+      push(update(hdr.item, f, left0 + s.w / 2, G.top - G.hdrH / 2, { width: s.w, height: G.hdrH,
+        content: `<p><strong>${s.p.code} · ${esc(s.p.nom)}</strong></p><p>${n} dossier${n > 1 ? 's' : ''}</p>` }));
     }
-    // barre de répartition par enjeu, sous l'en-tête
-    const n = s.list.length;
-    if (n) {
-      let bx = left + G.sectionPad;
+    // barre de répartition par enjeu
+    if (s.list.length) {
+      let bx = left0 + G.sectionPad;
       const bw = s.w - 2 * G.sectionPad;
       for (const e of ENJEUX) {
         const k = s.list.filter((x) => x.meta.enjeu === e.code).length;
         if (!k) continue;
-        const w = Math.max(8, (bw * k) / n);   // Miro impose 8 de largeur minimale
-        newBars.push({ e, x: bx + w / 2, w });
+        const w = Math.max(8, (bw * k) / s.list.length);
+        barsCibles.push({ key: `${s.p.code}|${e.code}`, pilote: s.p.code, e, x: bx + w / 2, w });
         bx += w;
       }
     }
-    // pastilles, en colonnes de haut en bas
+    // pastilles
     s.list.forEach((d, i) => {
       const c = Math.floor(i / rows), r = i % rows;
-      const rx = left + G.sectionPad + G.cardW / 2 + c * (G.cardW + G.gapX);
+      const rx = left0 + G.sectionPad + G.cardW / 2 + c * (G.cardW + G.gapX);
       const ry = G.top + G.barH + 8 + G.cardH / 2 + r * (G.cardH + G.gapY);
-      // remet le style à jour si la fiche a changé (ex. ancienne bordure CARSAT)
-      const st = cardStyle(d.meta);
-      if (d.item.style.borderColor !== st.borderColor || d.item.style.fillColor !== st.fillColor
-        || Number(d.item.style.borderWidth) !== st.borderWidth) {
-        d.item.style = { ...d.item.style, ...st };
-        syncs.push(d.item.sync());
-      }
-      moveTo(d.item, rx, ry);
-      if (d.meta.carsat) losanges.push({ ref: d.item.id, x: rx + G.cardW / 2 - 11, y: ry + G.cardH / 2 - 9 });
+      // style réécrit seulement si la couleur a changé (Miro reformate les autres valeurs)
+      const st = cardStyle(d.meta), cur = d.item.style || {};
+      const restyle = (cur.fillColor || '').toLowerCase() !== st.fillColor || (cur.borderColor || '').toLowerCase() !== st.borderColor;
+      push(update(d.item, f, rx, ry, restyle ? { style: st } : {}));
+      if (d.meta.carsat) losCibles.push({ ref: d.item.id, x: rx + G.cardW / 2 - 11, y: ry + G.cardH / 2 - 9 });
     });
     x0 += s.w + G.sectionGap;
   }
   await Promise.all(syncs);
-  await placeLosanges(frame, all, losanges);
-  try { await resize(frameW, frameH); } catch (e) { console.warn('Réduction du cadre reportée', e); }
-  await layoutZone2(frame, dossiers);
 
-  for (const b of newBars) {
-    const shp = await board().createShape({
-      shape: 'rectangle', content: '', width: b.w, height: G.barH, x: frame.x, y: frame.y,
-      style: { fillColor: b.e.fill, borderColor: '#1a1a1a', borderWidth: 1, borderOpacity: b.e.fill === '#ffffff' ? 1 : 0 },
-    });
-    await shp.setMetadata(META, { role: 'bar' });
-    await addToFrame(frame, shp);
-    place(shp, frame, b.x, G.top + G.barH / 2 + 2);
-    await shp.sync();
+  // barres : mise à jour en place, création / suppression du strict nécessaire
+  const s2 = [];
+  for (const b of barsCibles) {
+    let it = barsExist.get(b.key);
+    barsExist.delete(b.key);
+    const style = { fillColor: b.e.fill, borderColor: '#1a1a1a', borderWidth: 1, borderOpacity: b.e.fill === '#ffffff' ? 1 : 0 };
+    if (!it) it = await creer(f, 'shape', { shape: 'rectangle', content: '', width: b.w, height: G.barH, style }, { role: 'bar', pilote: b.pilote, enjeu: b.e.code });
+    const p = update(it, f, b.x, G.top + G.barH / 2 + 2, { width: b.w, height: G.barH });
+    if (p) s2.push(p);
   }
-  return { dossiers: dossiers.length, nettoyes, ms: Math.round(performance.now() - t0) };
+  // losanges CARSAT
+  for (const l of losCibles) {
+    let it = losExist.get(l.ref);
+    losExist.delete(l.ref);
+    if (!it) it = await creer(f, 'shape', { shape: 'rhombus', content: '', width: 14, height: 14,
+      style: { fillColor: CARSAT, borderColor: '#ffffff', borderWidth: 1, borderOpacity: 1 } }, { role: 'carsat', ref: l.ref });
+    const p = update(it, f, l.x, l.y);
+    if (p) s2.push(p);
+  }
+  await Promise.all([...s2, ...[...barsExist.values(), ...losExist.values()].map(remove)]);
+  try { await resizeFrame(f, frameW, frameH, top, left); } catch (e) { console.warn('Réduction du cadre 1 reportée', e); }
+  return frameH;
 }
 
-// Losange doré CARSAT : un petit objet par dossier CARSAT, posé au coin bas-droit de sa pastille.
-async function placeLosanges(frame, all, cibles) {
-  const exist = new Map(all.filter((x) => x.meta.role === 'carsat').map((x) => [x.meta.ref, x.item]));
-  const syncs = [];
-  for (const c of cibles) {
-    let it = exist.get(c.ref);
-    exist.delete(c.ref);
-    if (!it) {
-      it = await board().createShape({
-        shape: 'rhombus', content: '', width: 14, height: 14,
-        x: frame.x - frame.width / 2 + c.x, y: frame.y - frame.height / 2 + c.y,
-        style: { fillColor: CARSAT, borderColor: '#ffffff', borderWidth: 1, borderOpacity: 1 },
-      });
-      await it.setMetadata(META, { role: 'carsat', ref: c.ref });
-      await addToFrame(frame, it);
-      it = await board().getById(it.id);
-    }
-    place(it, frame, c.x, c.y);
-    syncs.push(it.sync());
-  }
-  await Promise.all([...syncs, ...[...exist.values()].map((it) => board().remove(it))]);
-}
-
-// ── Zone 2 : cartes priorisées, reflets des fiches (une carte par dossier priorisé) ──
+// ── Zone 2 : cartes priorisées (reflets), glisser-déposer entre colonnes ──
 const isoJour = (d) => d.toISOString().slice(0, 10);
 function alerte(echeance) {
   if (!echeance) return null;
@@ -316,8 +284,9 @@ function alerte(echeance) {
   if (j <= 15) return { value: `J-${j}`, fillColor: j <= 7 ? '#c8341f' : '#f0a020', textColor: '#ffffff' };
   return null;
 }
-function cardData(m) {
-  const e = enjeu(m.enjeu);
+const theme = (m) => { const e = enjeu(m.enjeu); return e.fill === '#ffffff' ? '#9aa0a6' : e.fill; };
+const echTxt = (m) => (m.echeance ? ` · éch. ${m.echeance.slice(8, 10)}/${m.echeance.slice(5, 7)}` : '');
+function cardData2(m) {
   const fields = [
     ...(m.ressource || []).map((r) => ({ value: r, fillColor: OR, textColor: BLEU })),
     ...(m.livrables || []).map((l) => ({ value: l, fillColor: '#e3f4d6', textColor: '#245c12' })),
@@ -325,117 +294,219 @@ function cardData(m) {
   const a = alerte(m.echeance);
   if (a) fields.push(a);
   if (m.carsat) fields.push({ value: 'CARSAT', fillColor: CARSAT, textColor: '#ffffff' });
-  return {
-    title: esc(m.titre) + (m.echeance ? ` · éch. ${m.echeance.slice(8, 10)}/${m.echeance.slice(5, 7)}` : ''),
-    style: { cardTheme: e.fill === '#ffffff' ? '#9aa0a6' : e.fill },
-    fields,
-  };
+  return { title: esc(m.titre) + echTxt(m), style: { cardTheme: theme(m) }, fields };
 }
 
-async function getZone2(frame1) {
-  const frames = await board().get({ type: 'frame' });
-  let f = frames.find((x) => (x.title || '').includes('Gestion des priorités'));
-  if (f) return f;
-  f = await board().createFrame({
-    title: ZONE2_TITLE, width: G.frameW, height: G.frameH, style: { fillColor: '#ffffff' },
-    x: frame1.x + frame1.width / 2 + 200 + G.frameW / 2, y: frame1.y,
-  });
+async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
+  let f = findFrame(snap.frames, 'Gestion des priorités');
+  if (!f) {
+    f = await board().createFrame({ title: ZONE2_TITLE, width: G.frameW, height: H, style: { fillColor: '#ffffff' },
+      x: f1.x + f1.width / 2 + 200 + G.frameW / 2, y: top1 + H / 2 });
+  }
+  if (H > f.height) await resizeFrame(f, f.width, H, top1);
+  const dans = vivants.filter((x) => inFrame(f, x.item));
   for (const p of COLONNES_PRIO) {
     for (const role of ['bg2', 'hdr2']) {
-      const s = await board().createShape({
-        shape: 'rectangle', content: '', width: 200, height: role === 'bg2' ? 200 : G.hdrH, x: f.x, y: f.y,
+      if (dans.some((x) => x.meta.role === role && x.meta.col === p)) continue;
+      const it = await creer(f, 'shape', { shape: 'rectangle', content: '', width: 200, height: role === 'bg2' ? 200 : G.hdrH,
         style: role === 'bg2' ? { fillColor: GRIS_FOND, borderOpacity: 0 }
-          : { fillColor: p === 'Autres' ? '#6b6f76' : BLEU, color: '#ffffff', fontSize: 24, fontFamily: 'open_sans',
-            textAlign: 'center', textAlignVertical: 'middle', borderOpacity: 0 },
-      });
-      await s.setMetadata(META, { role, col: p });
-      await addToFrame(f, s);
+          : { fillColor: p === 'Autres' ? '#6b6f76' : BLEU, color: '#ffffff', fontSize: 24, fontFamily: 'open_sans', textAlign: 'center', textAlignVertical: 'middle', borderOpacity: 0 } },
+      { role, col: p });
+      if (role === 'bg2') await board().sendToBack(it).catch(() => {});
+      dans.push({ item: it, meta: cache.get(it.id) });
     }
   }
-  return f;
-}
-
-async function layoutZone2(frame1, dossiers) {
-  const f = await getZone2(frame1);
-  const [shapes, cards] = await Promise.all([board().get({ type: 'shape' }), board().get({ type: 'card' })]);
-  const decor = shapes.filter((s) => inFrame(f, s));
-  const decMeta = await Promise.all(decor.map((s) => s.getMetadata(META)));
-  const mine = cards.filter((c) => inFrame(f, c));
-  const cMeta = await Promise.all(mine.map((c) => c.getMetadata(META)));
-  const byRef = new Map(mine.map((c, i) => [cMeta[i]?.ref, { item: c, meta: cMeta[i] }]));
-
-  const usableW = G.frameW - 2 * G.margin;
-  const colW = (usableW - 3 * G2.colGap) / 4;
-  const colOf = (relX) => Math.max(0, Math.min(3, Math.floor((relX - G.margin) / (colW + G2.colGap))));
+  const cartes = dans.filter((x) => x.meta.role === 'prio');
+  const parRef = new Map(cartes.map((x) => [x.meta.ref, x]));
+  const colW = (G.frameW - 2 * G.margin - 3 * G2.colGap) / 4;
   const relX = (it) => (it.relativeTo === 'parent_top_left' ? it.x : it.x - (f.x - f.width / 2));
+  const colOf = (rx) => COLONNES_PRIO[Math.max(0, Math.min(3, Math.floor((rx - G.margin) / (colW + G2.colGap))))];
 
-  // 1. Glisser-déposer : une carte déplacée dans une autre colonne change la priorité de sa fiche
+  // 1. glisser-déposer : carte déplacée dans une autre colonne -> nouvelle priorité de la fiche
   for (const d of dossiers) {
-    const c = byRef.get(d.item.id);
-    if (!c || !c.meta) continue;
-    const col = COLONNES_PRIO[colOf(relX(c.item))];
+    const c = parRef.get(d.item.id);
+    if (!c) continue;
+    const col = colOf(relX(c.item));
     if (col !== c.meta.col && col !== d.meta.priorite) {
       d.meta = { ...d.meta, priorite: col, maj: new Date().toISOString() };
-      await d.item.setMetadata(META, d.meta);
+      await setMeta(d.item, d.meta);
     }
   }
-  // 2. Création / mise à jour / suppression des cartes
+  // 2. cartes : création / mise à jour si changement / suppression des orphelines
   const prio = dossiers.filter((d) => COLONNES_PRIO.includes(d.meta.priorite));
-  const keep = new Set();
+  const garder = new Set();
   for (const d of prio) {
-    const data = cardData(d.meta);
-    let c = byRef.get(d.item.id)?.item;
+    const data = cardData2(d.meta);
+    const sig = JSON.stringify([data, d.meta.priorite]);
+    let c = parRef.get(d.item.id);
     if (!c) {
-      c = await board().createCard({ ...data, width: G2.cardW, x: f.x, y: f.y });
-      await addToFrame(f, c);
-      c = await board().getById(c.id);       // relit la carte avec ses coordonnées relatives au cadre
-    } else {
-      c.title = data.title; c.style = { ...c.style, ...data.style }; c.fields = data.fields;
+      const it = await creer(f, 'card', { ...data, width: G2.cardW }, { role: 'prio', ref: d.item.id, col: d.meta.priorite, sig });
+      c = { item: it, meta: cache.get(it.id), neuf: true };
+    } else if (c.meta.sig !== sig) {
+      c.item.title = data.title; c.item.style = { ...c.item.style, ...data.style }; c.item.fields = data.fields;
+      await setMeta(c.item, { ...c.meta, col: d.meta.priorite, sig });
+      c.modifie = true;
     }
-    await c.setMetadata(META, { role: 'prio', ref: d.item.id, col: d.meta.priorite });
-    d.card = c;
-    keep.add(c.id);
+    d.carte2 = c;
+    garder.add(c.item.id);
   }
-  const orphans = mine.filter((c) => !keep.has(c.id));
-  if (orphans.length) await Promise.all(orphans.map((c) => board().remove(c)));
+  await Promise.all(cartes.filter((x) => !garder.has(x.item.id)).map((x) => remove(x.item)));
 
-  // 3. Hauteur alignée sur la zone 1 (bords hauts alignés) ; réduction après rangement
-  const H = frame1.height;
-  const top1 = frame1.y - frame1.height / 2;
-  const resize2 = async (h) => {
-    if (Math.round(f.height) === Math.round(h) && Math.round(f.y - f.height / 2) === Math.round(top1)) return;
-    f.height = h; f.y = top1 + h / 2; await f.sync();
-  };
-  if (H > f.height) await resize2(H);
-
-  // 4. Rangement des colonnes (2 cartes par ligne, tri par enjeu puis échéance)
-  const order = (c) => ENJEUX.findIndex((e) => e.code === c);
+  // 3. décor + rangement (2 cartes par ligne, tri par enjeu puis échéance)
   const syncs = [];
+  const push = (p) => { if (p) syncs.push(p); };
   COLONNES_PRIO.forEach((p, k) => {
     const left = G.margin + k * (colW + G2.colGap);
     const list = prio.filter((d) => d.meta.priorite === p).sort((a, b) =>
-      order(a.meta.enjeu) - order(b.meta.enjeu) || (a.meta.echeance || '9').localeCompare(b.meta.echeance || '9'));
-    decor.forEach((s, i) => {
-      const m = decMeta[i];
-      if (!m || m.col !== p) return;
-      if (m.role === 'bg2') { s.width = colW; s.height = H - G2.top - G.margin + G.hdrH; place(s, f, left + colW / 2, G2.top - G.hdrH + s.height / 2); }
-      if (m.role === 'hdr2') { s.width = colW; s.height = G.hdrH; s.content = `<p><strong>${LIBELLE_PRIO[p]} · ${list.length}</strong></p>`; place(s, f, left + colW / 2, G2.top - G.hdrH / 2); }
-      syncs.push(s.sync());
-    });
+      ordreEnjeu(a.meta.enjeu) - ordreEnjeu(b.meta.enjeu) || (a.meta.echeance || '9').localeCompare(b.meta.echeance || '9'));
+    for (const x of dans) {
+      if (x.meta.col !== p) continue;
+      if (x.meta.role === 'bg2') { const h = H - G2.top - G.margin + G.hdrH; push(update(x.item, f, left + colW / 2, G2.top - G.hdrH + h / 2, { width: colW, height: h })); }
+      if (x.meta.role === 'hdr2') push(update(x.item, f, left + colW / 2, G2.top - G.hdrH / 2, { width: colW, height: G.hdrH, content: `<p><strong>${LIBELLE_PRIO[p]} · ${list.length}</strong></p>` }));
+    }
     const pad = (colW - 2 * G2.cardW - G2.cardGapX) / 2;
     list.forEach((d, i) => {
-      const cx = left + pad + G2.cardW / 2 + (i % 2) * (G2.cardW + G2.cardGapX);
-      place(d.card, f, cx, G2.top + 20 + G2.rowStep / 2 + Math.floor(i / 2) * G2.rowStep);
-      syncs.push(d.card.sync());
+      const it = d.carte2.item;
+      const pr = update(it, f, left + pad + G2.cardW / 2 + (i % 2) * (G2.cardW + G2.cardGapX), G2.top + 20 + G2.rowStep / 2 + Math.floor(i / 2) * G2.rowStep);
+      if (pr) push(pr); else if (d.carte2.modifie) push(it.sync());
     });
   });
   await Promise.all(syncs);
-  try { await resize2(H); } catch (e) { console.warn('Réduction de la zone 2 reportée', e); }
+  try { await resizeFrame(f, f.width, H, top1); } catch (e) { console.warn('Réduction du cadre 2 reportée', e); }
+  return f;
+}
+
+// ── Zone 3 : charge plans + devis par avant-vente × horizon d'échéance (généré, non éditable) ──
+function semaineISO(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const jour = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - jour);
+  const debut = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return t.getUTCFullYear() * 53 + Math.ceil(((t - debut) / 86400000 + 1) / 7);
+}
+function horizon(m) {
+  if (m.echeance) {
+    const delta = semaineISO(new Date(m.echeance)) - semaineISO(new Date());
+    return Math.max(0, Math.min(3, delta));
+  }
+  return { P1: 0, P2: 1, P3: 2 }[m.priorite] ?? 3;
+}
+
+async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
+  let f = findFrame(snap.frames, 'Charge plans');
+  if (!f) {
+    f = await board().createFrame({ title: ZONE3_TITLE, width: G.frameW, height: H, style: { fillColor: '#ffffff' },
+      x: f2.x + f2.width / 2 + 200 + G.frameW / 2, y: top1 + H / 2 });
+  }
+  if (H > f.height) await resizeFrame(f, f.width, H, top1);
+  const dans = vivants.filter((x) => inFrame(f, x.item));
+  const W = f.width;
+  const colW = (W - 2 * G.margin - G3.labelW - G3.colGap * RESSOURCES.length) / RESSOURCES.length;
+  const colX = (j) => G.margin + G3.labelW + G3.colGap + j * (colW + G3.colGap);
+  const rowH = (H - G3.top - G.margin - 3 * G3.rowGap) / 4;
+  const rowY = (r) => G3.top + r * (rowH + G3.rowGap);
+  const parLigne = Math.max(1, Math.floor((colW - 16 + G3.cardGapX) / (G3.cardW + G3.cardGapX)));
+  const lignesCase = Math.max(1, Math.floor((rowH - 16) / G3.rowStep));
+  const capacite = parLigne * lignesCase;
+
+  // décor manquant
+  const decor = [];
+  RESSOURCES.forEach((av) => decor.push({ role: 'hdr3', av }));
+  HORIZONS.forEach((h, r) => decor.push({ role: 'lab3', r }));
+  RESSOURCES.forEach((av) => HORIZONS.forEach((h, r) => decor.push({ role: 'bg3', av, r })));
+  for (const d of decor) {
+    if (dans.some((x) => x.meta.role === d.role && x.meta.av === d.av && x.meta.r === d.r)) continue;
+    const style = d.role === 'hdr3' ? { fillColor: BLEU, color: '#ffffff', fontSize: 20, fontFamily: 'open_sans', textAlign: 'center', textAlignVertical: 'middle', borderOpacity: 0 }
+      : d.role === 'lab3' ? { fillColor: '#ffffff', color: BLEU, fontSize: 18, fontFamily: 'open_sans', textAlign: 'center', textAlignVertical: 'middle', borderColor: BLEU, borderWidth: 2, borderOpacity: 1 }
+        : { fillColor: GRIS_FOND, borderOpacity: 0 };
+    const it = await creer(f, 'shape', { shape: 'rectangle', content: d.role === 'lab3' ? `<p><strong>${HORIZONS[d.r]}</strong></p>` : '', width: 100, height: 60, style }, d);
+    if (d.role === 'bg3') await board().sendToBack(it).catch(() => {});
+    dans.push({ item: it, meta: cache.get(it.id) });
+  }
+
+  // cartes cibles : un reflet par (dossier, avant-vente) qui attend un plan et/ou un devis
+  const cibles = [];
+  const compte = Object.fromEntries(RESSOURCES.map((a) => [a, { plans: 0, devis: 0 }]));
+  for (const d of dossiers) {
+    const livr = (d.meta.livrables || []).filter((l) => LIVRABLES_PLAN.includes(l) || LIVRABLES_DEVIS.includes(l));
+    if (!livr.length) continue;
+    for (const av of (d.meta.ressource || []).filter((a) => RESSOURCES.includes(a))) {
+      cibles.push({ d, av, r: horizon(d.meta), livr, key: `${d.item.id}|${av}` });
+      if (livr.some((l) => LIVRABLES_PLAN.includes(l))) compte[av].plans++;
+      if (livr.some((l) => LIVRABLES_DEVIS.includes(l))) compte[av].devis++;
+    }
+  }
+  const exist = new Map(dans.filter((x) => x.meta.role === 'av').map((x) => [x.meta.key, x]));
+  const garder = new Set();
+  for (const c of cibles) {
+    const m = c.d.meta;
+    const fields = [{ value: m.pilote, fillColor: BLEU, textColor: '#ffffff' },
+      ...c.livr.map((l) => ({ value: l, fillColor: '#e3f4d6', textColor: '#245c12' }))];
+    const a = alerte(m.echeance);
+    if (a) fields.push(a);
+    const data = { title: esc(m.titre) + echTxt(m), style: { cardTheme: theme(m) }, fields };
+    const sig = JSON.stringify(data);
+    let x = exist.get(c.key);
+    if (!x) {
+      const it = await creer(f, 'card', { ...data, width: G3.cardW }, { role: 'av', key: c.key, ref: c.d.item.id, sig });
+      x = { item: it, meta: cache.get(it.id) };
+    } else if (x.meta.sig !== sig) {
+      x.item.title = data.title; x.item.style = { ...x.item.style, ...data.style }; x.item.fields = data.fields;
+      await setMeta(x.item, { ...x.meta, sig });
+      x.modifie = true;
+    }
+    c.x = x;
+    garder.add(x.item.id);
+  }
+  await Promise.all(dans.filter((x) => x.meta.role === 'av' && !garder.has(x.item.id)).map((x) => remove(x.item)));
+
+  // rangement
+  const syncs = [];
+  const push = (p) => { if (p) syncs.push(p); };
+  const debordements = new Map(dans.filter((x) => x.meta.role === 'ovf3').map((x) => [`${x.meta.av}|${x.meta.r}`, x.item]));
+  for (const x of dans) {
+    const m = x.meta;
+    if (m.role === 'hdr3') {
+      const j = RESSOURCES.indexOf(m.av), k = compte[m.av];
+      push(update(x.item, f, colX(j) + colW / 2, G3.top - G.hdrH / 2 - 8, { width: colW, height: G.hdrH,
+        content: `<p><strong>${m.av}</strong> · ${k.plans} plan${k.plans > 1 ? 's' : ''} · ${k.devis} devis</p>` }));
+    }
+    if (m.role === 'lab3') push(update(x.item, f, G.margin + G3.labelW / 2, rowY(m.r) + rowH / 2, { width: G3.labelW, height: rowH }));
+    if (m.role === 'bg3') push(update(x.item, f, colX(RESSOURCES.indexOf(m.av)) + colW / 2, rowY(m.r) + rowH / 2, { width: colW, height: rowH }));
+  }
+  const ordre = (a, b) => ordreEnjeu(a.d.meta.enjeu) - ordreEnjeu(b.d.meta.enjeu) || (a.d.meta.echeance || '9').localeCompare(b.d.meta.echeance || '9');
+  const s2 = [];
+  for (const [j, av] of RESSOURCES.entries()) {
+    for (let r = 0; r < 4; r++) {
+      const list = cibles.filter((c) => c.av === av && c.r === r).sort(ordre);
+      const pad = (colW - parLigne * G3.cardW - (parLigne - 1) * G3.cardGapX) / 2;
+      list.forEach((c, i) => {
+        const vis = i < capacite;
+        const k = vis ? i : capacite - 1;           // au-delà de la capacité : empilées sous la dernière
+        const rx = colX(j) + pad + G3.cardW / 2 + (k % parLigne) * (G3.cardW + G3.cardGapX);
+        const ry = rowY(r) + 8 + G3.rowStep / 2 + Math.floor(k / parLigne) * G3.rowStep;
+        const p = update(c.x.item, f, rx, ry);
+        if (p) push(p); else if (c.x.modifie) push(c.x.item.sync());
+      });
+      // indicateur « +n » si la case déborde
+      const cle = `${av}|${r}`;
+      let ovf = debordements.get(cle);
+      debordements.delete(cle);
+      const n = list.length - capacite;
+      if (n > 0) {
+        if (!ovf) ovf = await creer(f, 'shape', { shape: 'round_rectangle', content: '', width: 70, height: 30,
+          style: { fillColor: '#c8341f', color: '#ffffff', fontSize: 14, fontFamily: 'open_sans', textAlign: 'center', textAlignVertical: 'middle', borderOpacity: 0 } }, { role: 'ovf3', av, r });
+        const p = update(ovf, f, colX(j) + colW - 45, rowY(r) + rowH - 22, { content: `<p><strong>+${n}</strong></p>` });
+        if (p) s2.push(p);
+      } else if (ovf) s2.push(remove(ovf));
+    }
+  }
+  await Promise.all([...syncs, ...s2, ...[...debordements.values()].map(remove)]);
+  try { await resizeFrame(f, f.width, H, top1); } catch (e) { console.warn('Réduction du cadre 3 reportée', e); }
 }
 
 export async function stats() {
-  const frame = await getZone1();
-  if (!frame) return null;
-  const d = (await zoneItems(frame)).filter((x) => x.meta.role === 'dossier');
+  const snap = await snapshot();
+  const d = snap.items.filter((x) => x.meta?.role === 'dossier');
   return PILOTES.map((p) => ({ code: p.code, n: d.filter((x) => x.meta.pilote === p.code).length }));
 }
