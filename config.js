@@ -24,8 +24,9 @@ export const ENJEUX = [
 
 export const PRIORITES = ['P1', 'P2', 'P3', 'Autres', '—'];
 export const RESSOURCES = ['AG', 'OP', 'PS', 'JAB', 'FS'];
-export const LIVRABLES = ['plan', 'devis', 'plan + devis', 'esquisse', 'Réponse AO',
-  'enveloppe', 'CDC', 'RDV', 'BERCHER', 'Retrofit', 'Plan action', 'étude', 'relance',
+// Libellés toujours en minuscules, sauf les sigles GC et CDC
+export const LIVRABLES = ['plan', 'devis', 'plan + devis', 'esquisse', '3d', 'étude', 'étude énergétique',
+  'réponse ao', 'enveloppe', 'CDC', 'GC', 'carsat', 'rdv', 'bercher', 'retrofit', 'plan action', 'relance',
   'manque infos commercial'];
 
 export const CARSAT = '#af7e04';

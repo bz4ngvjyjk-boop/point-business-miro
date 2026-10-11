@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=48';
+} from './config.js?v=49';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -29,8 +29,14 @@ function tronque(t, budget) {
 // ── Tâches avant-vente : [{ ressource, livrable, priorite, echeance }] ──
 // Les anciennes fiches (ressource[] + livrables[] + echeance) sont converties à la lecture.
 // Libellés renommés : les fiches existantes sont lues avec le nouveau nom (réécrit au prochain enregistrement)
-const RENOMME = { "Réponse appel d'offre": 'Réponse AO' };
-const renomme = (t) => (RENOMME[t.livrable] ? { ...t, livrable: RENOMME[t.livrable] } : t);
+// (anciens libellés, et règle « minuscules sauf GC et CDC »)
+const SIGLES = ['GC', 'CDC'];
+const nomLivrable = (l) => {
+  if (!l) return l;
+  if (/appel d.offre/i.test(l)) return 'réponse ao';
+  return SIGLES.includes(l.toUpperCase()) ? l.toUpperCase() : l.toLowerCase();
+};
+const renomme = (t) => (t.livrable && nomLivrable(t.livrable) !== t.livrable ? { ...t, livrable: nomLivrable(t.livrable) } : t);
 export function tachesDe(m) {
   if (Array.isArray(m.taches)) return m.taches.map(renomme);
   const L = m.livrables || [];
@@ -238,9 +244,10 @@ const AIDE_BOITE = `<p><strong>Saisie depuis le mobile</strong> : poser un post-
 const ENJEU_MOTS = { s: 'S', strat: 'S', strategique: 'S', e1: 'E1', e2: 'E2', e3: 'E3', q: 'Q', qualif: 'Q',
   closing: 'C', c: 'C', signe: 'G', g: 'G' };
 const LIV_MOTS = [
-  [/plan\s*\+\s*devis/, 'plan + devis'], [/plan\s*action/, 'Plan action'], [/\bplan\b/, 'plan'], [/\bdevis\b/, 'devis'],
-  [/esquisse/, 'esquisse'], [/\bao\b|appel d.offre/, 'Réponse AO'], [/enveloppe/, 'enveloppe'], [/\bcdc\b/, 'CDC'],
-  [/\brdv\b/, 'RDV'], [/bercher/, 'BERCHER'], [/retrofit/, 'Retrofit'], [/etude/, 'étude'], [/relance/, 'relance'],
+  [/plan\s*\+\s*devis/, 'plan + devis'], [/plan\s*action/, 'plan action'], [/\bplan\b/, 'plan'], [/\bdevis\b/, 'devis'],
+  [/esquisse/, 'esquisse'], [/\bao\b|appel d.offre/, 'réponse ao'], [/enveloppe/, 'enveloppe'], [/\bcdc\b/, 'CDC'],
+  [/\brdv\b/, 'rdv'], [/bercher/, 'bercher'], [/retrofit/, 'retrofit'], [/etude energ/, 'étude énergétique'], [/etude/, 'étude'],
+  [/relance/, 'relance'], [/\b3d\b/, '3d'], [/carsat/, 'carsat'], [/\bgc\b/, 'GC'],
 ];
 const sansAccent = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 function dateIso(txt) {
@@ -790,8 +797,8 @@ function horizon(t) {
 
 // Ordre manuel par avant-vente (enregistré sur le board) : liste de clés de tâches
 const cleTache = (dossierId, av, livrable) => `${dossierId}|${av}|${livrable}`;
-const renommeCle = (c) => (typeof c === 'string' ? c.replace("Réponse appel d'offre", 'Réponse AO')
-  : c && c.key ? { ...c, key: c.key.replace("Réponse appel d'offre", 'Réponse AO') } : c);
+const cleRenommee = (k) => { const i = k.lastIndexOf('|'); return i < 0 ? k : k.slice(0, i + 1) + nomLivrable(k.slice(i + 1)); };
+const renommeCle = (c) => (typeof c === 'string' ? cleRenommee(c) : c && c.key ? { ...c, key: cleRenommee(c.key) } : c);
 async function ordreBrut(av) { return ((await board().getAppData(`ordre_${av}`).catch(() => null)) || []).map(renommeCle); }
 // clés dans l'ordre manuel (les entrées peuvent être des chaînes ou des objets { key, r })
 async function ordreManuel(av) { return (await ordreBrut(av)).map((e) => (typeof e === 'string' ? e : e.key)); }
