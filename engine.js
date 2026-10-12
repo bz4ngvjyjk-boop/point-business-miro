@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=57';
+} from './config.js?v=58';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -424,8 +424,10 @@ async function layoutInterne({ pilotes = null } = {}) {
   for (const f of [f1, f2, f3, f4].filter(Boolean)) {
     try { await titreCadre(f, vivants); } catch (e) { console.warn('Titre cadre', e); }
   }
-  try { await layoutAttribuer(f1, vivants, dossiers, top1); } catch (e) { console.warn('À attribuer', e); }
-  try { await layoutParking(f2, vivants, dossiers, top1); } catch (e) { console.warn('Parking', e); }
+  // « À attribuer » et parking : même hauteur (la plus grande des deux)
+  const hBandeaux = Math.max(hauteurAttribuer(f1, dossiers), hauteurParking(dossiers));
+  try { await layoutAttribuer(f1, vivants, dossiers, top1, hBandeaux); } catch (e) { console.warn('À attribuer', e); }
+  try { await layoutParking(f2, vivants, dossiers, top1, hBandeaux); } catch (e) { console.warn('Parking', e); }
   try { await layoutGarde(snap, f1, vivants, top1, H); } catch (e) { console.warn('Page de garde', e); }
   return { dossiers: dossiers.length, nettoyes: orphelins.length, mobiles, ms: Math.round(performance.now() - t0) };
 }
@@ -516,7 +518,11 @@ async function sortirSansPilote(f1, dossiers) {
   }
 }
 const PA = { hdrH: 70, pad: 20, marge: 60, rangsMin: 2 };
-async function layoutAttribuer(f1, vivants, dossiers, top1) {
+function hauteurAttribuer(f1, dossiers) {
+  const parRang = Math.max(1, Math.floor((f1.width - 2 * G.margin + G.gapX) / (G.cardW + G.gapX)));
+  return PA.hdrH + Math.max(PA.rangsMin, Math.ceil(dossiers.filter(sansPilote).length / parRang)) * (G.cardH + G.gapY) + PA.pad;
+}
+async function layoutAttribuer(f1, vivants, dossiers, top1, hMin = 0) {
   const ref = { x: f1.x, y: f1.y, width: f1.width, height: f1.height };
   const libres = vivants.filter((x) => ['pabg', 'pat'].includes(x.meta.role));
   const liste = dossiers.filter(sansPilote)
@@ -524,7 +530,7 @@ async function layoutAttribuer(f1, vivants, dossiers, top1) {
   const W = f1.width;
   const parRang = Math.max(1, Math.floor((W - 2 * G.margin + G.gapX) / (G.cardW + G.gapX)));
   const rangs = Math.max(PA.rangsMin, Math.ceil(liste.length / parRang));
-  const Hp = PA.hdrH + rangs * (G.cardH + G.gapY) + PA.pad;
+  const Hp = Math.max(hMin, PA.hdrH + rangs * (G.cardH + G.gapY) + PA.pad);
   const haut = -PA.marge - Hp;
   const syncs = [];
   const libre = async (props, meta) => {
@@ -552,7 +558,10 @@ async function layoutAttribuer(f1, vivants, dossiers, top1) {
 // Dossiers à évoquer au prochain point, cochés « Parking » sur la fiche pendant la semaine.
 // Les post-its ou cartes posés à la main dans cette zone ne sont jamais touchés par l'app.
 const PK = { cols: 4, gapY: 12, hdrH: 70, pad: 20, marge: 60, cardH: 88, rangsMin: 3 };   // cartes alignées sur les colonnes de la zone 2
-async function layoutParking(f2, vivants, dossiers, top1) {
+function hauteurParking(dossiers) {
+  return PK.hdrH + Math.max(PK.rangsMin, Math.ceil(dossiers.filter((d) => d.meta.parking).length / PK.cols)) * (PK.cardH + PK.gapY) + PK.pad;
+}
+async function layoutParking(f2, vivants, dossiers, top1, hMin = 0) {
   const ref = { x: f2.x, y: f2.y, width: f2.width, height: f2.height };      // repère : coin haut-gauche de la zone 2
   const libres = vivants.filter((x) => ['pk', 'pkbg', 'pkt'].includes(x.meta.role));
   const cartes = new Map(libres.filter((x) => x.meta.role === 'pk').map((x) => [x.meta.ref, x]));
@@ -560,7 +569,7 @@ async function layoutParking(f2, vivants, dossiers, top1) {
   const rangs = Math.max(PK.rangsMin, Math.ceil(liste.length / PK.cols));   // zone réservée : 3 rangées au minimum
   const W = f2.width;                                                       // même largeur que la zone 2
   const pasX = G2.cardW + 2 * G2.cardPad + G2.colGap;
-  const Hp = PK.hdrH + rangs * (PK.cardH + PK.gapY) + PK.pad;
+  const Hp = Math.max(hMin, PK.hdrH + rangs * (PK.cardH + PK.gapY) + PK.pad);
   const haut = -PK.marge - Hp;                                                // relatif au haut de la zone 2
   const syncs = [];
   const libre = async (kind, props, meta) => {
