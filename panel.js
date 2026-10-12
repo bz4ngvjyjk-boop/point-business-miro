@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=59';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin, dossiersParking, mettreEnParking } from './engine.js?v=59';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=60';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin, dossiersParking, mettreEnParking } from './engine.js?v=60';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -91,7 +91,9 @@ function suiviDate() {
   return `${t} (${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')})`;
 }
 
+let generation = 0;
 function fill(d, id) {
+  generation++;
   currentId = id || null;
   $('chasse').checked = !!d?.chasse;
   // trimestre visé : toujours proposé, même s'il est passé (sinon il serait effacé à l'enregistrement)
@@ -147,6 +149,7 @@ function collect() {
     parkingLe: enParking() ? (parkingLe || new Date().toISOString().slice(0, 10)) : null,
   };
   if (!d.titre) throw new Error('Indique le client et le site.');
+  if (!currentId && !getSeg('pilote').length) throw new Error('Choisis le pilote (ou « À attribuer ») pour créer le dossier.');
   return d;
 }
 
@@ -163,7 +166,8 @@ $('reset').onclick = async () => { await flush(); fill(null); };
 // ══ Enregistrement automatique ══
 // Toute modification est enregistrée seule : cases et listes tout de suite, texte après une courte pause.
 // Un nouveau dossier est créé dès que le client et le pilote sont renseignés.
-let minuterie = null, enCoursSave = false, aRefaire = false;
+let minuterie = null, enCoursSave = false, aRefaire = false, saveEnCours = null;
+const nomNormal = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 function planifier(delai = 0) {
   majBoutonZ2();
   clearTimeout(minuterie);
@@ -171,21 +175,32 @@ function planifier(delai = 0) {
 }
 // modification en attente : enregistrée avant de changer de fiche
 async function flush() {
-  if (!minuterie) return;
-  clearTimeout(minuterie);
-  await autoSave();
+  if (minuterie) { clearTimeout(minuterie); await autoSave(); }
+  while (saveEnCours) await saveEnCours.catch(() => {});
 }
 async function autoSave() {
   minuterie = null;
   if (enCoursSave) { aRefaire = true; return; }
   let d;
   try { d = collect(); }
-  catch (e) { if (currentId) status(e.message, true); else status('Renseigne le client : le dossier sera créé automatiquement (sans pilote = « À attribuer »).'); return; }
+  catch (e) { if (currentId) status(e.message, true); else status(`${e.message} Le dossier sera créé automatiquement.`); return; }
   enCoursSave = true;
-  const nouveau = !currentId;
+  const nouveau = !currentId, gen = generation;
+  let fini;
+  saveEnCours = new Promise((r) => { fini = r; });
   status(nouveau ? 'Création du dossier…' : 'Enregistrement…');
   try {
+    if (nouveau) {                                // garde-fou : un dossier du même nom existe déjà -> on l'ouvre, pas de doublon
+      const deja = (await tousDossiers()).find((x) => nomNormal(x.titre) === nomNormal(d.titre));
+      if (deja) {
+        const it = await miro.board.getById(deja.id);
+        fill(await readDossier(it), deja.id);
+        status(`« ${deja.titre} » existe déjà (${deja.pilote || 'à attribuer'}) : fiche existante ouverte, aucun doublon créé.`, true);
+        return;
+      }
+    }
     const item = await saveDossier(d, currentId);
+    if (gen !== generation) return;               // une autre fiche a été ouverte entre-temps : ne pas la détourner
     currentId = item.id;
     suiviInitial = d.suivi || '';                 // la date du suivi n'est ajoutée qu'une fois
     chasseLe = d.chasseLe;
@@ -198,7 +213,8 @@ async function autoSave() {
   } catch (e) { status(e.message || String(e), true); console.error(e); }
   finally {
     enCoursSave = false;
-    if (aRefaire) { aRefaire = false; planifier(0); }
+    saveEnCours = null; fini();
+    if (aRefaire) { aRefaire = false; if (gen === generation) planifier(0); }
   }
 }
 const vue = $('vueDossier');

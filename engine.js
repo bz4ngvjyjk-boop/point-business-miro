@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=59';
+} from './config.js?v=60';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -370,6 +370,38 @@ async function appliquerReprise(snap) {
   return n;
 }
 
+// Fusion de doublons (ponctuelle) : texte « PBH-FUSION: [{"de": id, "vers": id}] » déposé par script.
+// Les lignes avant-vente sont réunies (une ligne avec ressource l'emporte sur la même action sans ressource),
+// les champs vides de « vers » sont complétés par « de », puis le dossier « de » est supprimé.
+async function appliquerFusion(snap) {
+  const t = snap.items.find((x) => x.item.type === 'text' && (x.item.content || '').includes('PBH-FUSION'));
+  if (!t) return 0;
+  let liste;
+  try { liste = JSON.parse(decodeHtml(t.item.content.replace(/<[^>]+>/g, '')).split('PBH-FUSION:')[1].trim()); }
+  catch (e) { console.warn('PBH-FUSION illisible', e); return 0; }
+  let n = 0;
+  for (const { de, vers } of liste) {
+    const a = snap.items.find((x) => x.item.id === de && x.meta?.role === 'dossier');
+    const b = snap.items.find((x) => x.item.id === vers && x.meta?.role === 'dossier');
+    if (!a || !b) { console.warn('PBH-FUSION : dossier introuvable', de, vers); continue; }
+    const taches = [...tachesDe(b.meta)];
+    for (const ta of tachesDe(a.meta)) {
+      const i = taches.findIndex((tb) => tb.livrable === ta.livrable && (!tb.ressource || !ta.ressource || tb.ressource === ta.ressource));
+      if (i < 0) taches.push(ta);
+      else if (!taches[i].ressource && ta.ressource) taches[i] = { ...taches[i], ...ta };
+    }
+    const m = { ...b.meta };
+    for (const [k, v] of Object.entries(a.meta)) if ((m[k] === undefined || m[k] === null || m[k] === '' || m[k] === '—' || m[k] === false) && v) m[k] = v;
+    m.taches = taches; m.maj = new Date().toISOString();
+    await setMeta(b.item, m);
+    await remove(a.item);
+    n++;
+  }
+  await board().remove(t.item).catch(() => {});
+  console.log(`PBH-FUSION : ${n} doublon(s) fusionné(s)`);
+  return n;
+}
+
 // Reprise des n° d'opportunité : texte « PBH-OPP: {"titre": id, ...} » déposé par script.
 // Ne complète que les fiches sans n° (jamais d'écrasement), puis le texte est supprimé.
 async function appliquerOpp(snap) {
@@ -406,6 +438,7 @@ async function layoutInterne({ pilotes = null } = {}) {
   // post-its de la boîte mobile : intégrés avant le rangement (rangement complet s'il y en a)
   try { if (await appliquerReprise(snap)) snap = await snapshot(); } catch (e) { console.warn('Reprise', e); }
   try { if (await appliquerOpp(snap)) snap = await snapshot(); } catch (e) { console.warn('PBH-OPP', e); }
+  try { if (await appliquerFusion(snap)) snap = await snapshot(); } catch (e) { console.warn('PBH-FUSION', e); }
   let mobiles = 0;
   const BOITE_MOBILE_ACTIVE = false;   // saisie mobile abandonnée (décision 11/10) : code conservé, désactivé
   if (BOITE_MOBILE_ACTIVE && !pilotes) {
