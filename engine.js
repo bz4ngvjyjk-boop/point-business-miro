@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=58';
+} from './config.js?v=59';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -87,6 +87,13 @@ function place(item, f, rx, ry) {
 // Déplace / redimensionne / restyle ; renvoie une promesse de synchro seulement si quelque chose change
 // Carte agrandie / rétrécie (redimensionnée à la main ou créée hors gabarit) : remise à la largeur standard
 // avant l'empilement, pour que sa hauteur relue soit la bonne.
+// Hauteur d'une carte tout juste créée : relue après un court délai (Miro l'ajuste à ses étiquettes)
+async function hauteursReelles(refs) {
+  if (!refs.length) return;
+  await Promise.all(refs.filter((c) => c.modifie).map((c) => c.item.sync().catch(() => {})));   // étiquettes modifiées : appliquées d'abord
+  await new Promise((r) => setTimeout(r, 500));
+  await Promise.all(refs.map(async (c) => { const it = await board().getById(c.item.id).catch(() => null); if (it) c.item = it; }));
+}
 async function largeurCartes(items, w, f) {
   await Promise.all(items.filter((it) => it.width && Math.abs(it.width - w) > 1).map((it) => {
     it.width = w;
@@ -878,6 +885,8 @@ async function layoutZone2(snap, f1, vivants, dossiers, H, top1) {
     garder.add(c.item.id);
   }
   await Promise.all(cartes.filter((x) => !garder.has(x.item.id)).map((x) => remove(x.item)));
+  // carte neuve : Miro calcule sa hauteur réelle (étiquettes) après création -> relue avant l'empilement
+  await hauteursReelles(prio.map((d) => d.carte2).filter((c) => c?.neuf || c?.modifie));
   // anciennes croix ✕ posées sur les cartes (v32) : supprimées, le retrait se fait depuis le panneau
   await Promise.all(dans.filter((x) => x.meta.role === 'x2').map((x) => remove(x.item)));
 
@@ -1068,7 +1077,7 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
     let x = exist.get(c.key);
     if (!x) {
       const it = await creer(f, 'card', { ...data, width: G3.cardW }, { role: 'av', key: c.key, ref: c.d.item.id, sig });
-      x = { item: it, meta: cache.get(it.id) };
+      x = { item: it, meta: cache.get(it.id), neuf: true };
     } else if (x.meta.sig !== sig) {
       x.item.title = data.title; x.item.style = { ...x.item.style, ...data.style }; x.item.fields = data.fields;
       await setMeta(x.item, { ...x.meta, sig });
@@ -1079,6 +1088,7 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
   }
   await Promise.all(dans.filter((x) => x.meta.role === 'av' && !garder.has(x.item.id)).map((x) => remove(x.item)));
 
+  await hauteursReelles(cibles.map((c) => c.x).filter((x) => x?.neuf || x?.modifie));
   // rangement
   const syncs = [];
   const push = (p) => { if (p) syncs.push(p); };
