@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=55';
+} from './config.js?v=56';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -161,7 +161,7 @@ export async function saveDossier(d, itemId) {
   if (!f) throw new Error("Board non initialisé : clique d'abord sur « Préparer le board ».");
   let item;
   const meta = { role: 'dossier', ...d, maj: new Date().toISOString() };
-  const pilotes = new Set([d.pilote]);
+  const pilotes = new Set([d.pilote || '']);
   if (itemId) {
     item = await board().getById(itemId);
     const avant = cache.get(itemId);
@@ -413,11 +413,13 @@ async function layoutInterne({ pilotes = null } = {}) {
   const dossiers = vivants.filter((x) => x.meta.role === 'dossier');
   await restaurerPriorites(dossiers);
 
+  try { await sortirSansPilote(f1, dossiers); } catch (e) { console.warn('À attribuer', e); }
   const H = await layoutZone1(f1, vivants, dossiers, pilotes);
   const top1 = f1.y - f1.height / 2;
   const f2 = await layoutZone2(snap, f1, vivants, dossiers, H, top1);
   const f3 = await layoutZone3(snap, f2, vivants, dossiers, H, top1);
   try { await layoutZone4(snap, f3, vivants, dossiers, H, top1); } catch (e) { console.warn('Zone 4', e); }
+  try { await layoutAttribuer(f1, vivants, dossiers, top1); } catch (e) { console.warn('À attribuer', e); }
   try { await layoutParking(f2, vivants, dossiers, top1); } catch (e) { console.warn('Parking', e); }
   try { await layoutGarde(snap, f1, vivants, top1, H); } catch (e) { console.warn('Page de garde', e); }
   return { dossiers: dossiers.length, nettoyes: orphelins.length, mobiles, ms: Math.round(performance.now() - t0) };
@@ -483,6 +485,49 @@ async function layoutGarde(snap, f1, vivants, top1, H) {
   // le cadre est réduit APRÈS avoir replacé son contenu (Miro refuse un cadre plus petit que ses enfants)
   try { await resizeFrame(f, GW, GH, f.y - f.height / 2, f.x - f.width / 2); await resizeFrame(f, GW, GH, top1, left); }
   catch (e) { console.warn('Cadre page de garde', e); }
+}
+
+// ── « À attribuer » (au-dessus de la zone 1, SANS cadre : hors export PDF) ──
+// Les demandes sans pilote y sont rangées automatiquement ; dès qu'un pilote est choisi, la pastille rejoint sa colonne.
+const sansPilote = (d) => !PILOTES.some((p) => p.code === d.meta.pilote);
+async function sortirSansPilote(f1, dossiers) {
+  for (const d of dossiers) {
+    const dedans = d.item.parentId === f1.id;
+    if (sansPilote(d) && dedans) { await f1.remove(d.item).catch(() => {}); d.item = await board().getById(d.item.id); }
+    else if (!sansPilote(d) && !dedans) { await addToFrame(f1, d.item); d.item = await board().getById(d.item.id); }
+  }
+}
+const PA = { hdrH: 70, pad: 20, marge: 60, rangsMin: 2 };
+async function layoutAttribuer(f1, vivants, dossiers, top1) {
+  const ref = { x: f1.x, y: f1.y, width: f1.width, height: f1.height };
+  const libres = vivants.filter((x) => ['pabg', 'pat'].includes(x.meta.role));
+  const liste = dossiers.filter(sansPilote)
+    .sort((a, b) => ordreEnjeu(a.meta.enjeu) - ordreEnjeu(b.meta.enjeu) || a.meta.titre.localeCompare(b.meta.titre, 'fr'));
+  const W = f1.width;
+  const parRang = Math.max(1, Math.floor((W - 2 * G.margin + G.gapX) / (G.cardW + G.gapX)));
+  const rangs = Math.max(PA.rangsMin, Math.ceil(liste.length / parRang));
+  const Hp = PA.hdrH + rangs * (G.cardH + G.gapY) + PA.pad;
+  const haut = -PA.marge - Hp;
+  const syncs = [];
+  const libre = async (props, meta) => {
+    const it = await board().createShape({ ...props, x: ref.x, y: ref.y - ref.height });
+    await setMeta(it, meta);
+    return it;
+  };
+  let bg = libres.find((x) => x.meta.role === 'pabg')?.item;
+  if (!bg) { bg = await libre({ shape: 'rectangle', content: '', width: W, height: Hp, style: { fillColor: '#f3f6fb', borderColor: BLEU, borderStyle: 'dashed', borderWidth: 2 } }, { role: 'pabg' }); await board().sendToBack(bg).catch(() => {}); }
+  syncs.push(update(bg, ref, W / 2, haut + Hp / 2, { width: W, height: Hp }));
+  let tt = libres.find((x) => x.meta.role === 'pat')?.item;
+  const titre = `<p><strong>À attribuer · demandes sans pilote</strong>${liste.length ? ` (${liste.length})` : ' — aucune'}</p>`;
+  if (!tt) tt = await libre({ shape: 'rectangle', content: titre, width: W - 2 * G.margin, height: 50, style: { fillOpacity: 0, borderOpacity: 0, color: BLEU, fontSize: 24, fontFamily: 'open_sans', textAlign: 'left', textAlignVertical: 'middle' } }, { role: 'pat' });
+  syncs.push(update(tt, ref, W / 2, haut + PA.hdrH / 2, { width: W - 2 * G.margin, height: 50, content: titre }));
+  liste.forEach((d, i) => {
+    const col = i % parRang, rang = Math.floor(i / parRang);
+    const p = update(d.item, ref, G.margin + col * (G.cardW + G.gapX) + G.cardW / 2, haut + PA.hdrH + rang * (G.cardH + G.gapY) + G.cardH / 2,
+      { width: G.cardW, height: G.cardH });
+    if (p) syncs.push(p);
+  });
+  await Promise.all(syncs.filter(Boolean));
 }
 
 // ── Parking (au-dessus de la zone 2, SANS cadre : n'apparaît pas dans l'export PDF) ──

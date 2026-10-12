@@ -1,6 +1,6 @@
 // Panneau de saisie : une fiche dossier = listes de choix, aucune saisie libre hors titre.
-import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=55';
-import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin, dossiersParking, mettreEnParking } from './engine.js?v=55';
+import { PILOTES, ENJEUX, PRIORITES, RESSOURCES, LIVRABLES } from './config.js?v=56';
+import { initBoard, saveDossier, deleteDossier, readDossier, layout, getZone1, importDossiers, tachesDe, tachesAV, enregistrerOrdreAV, marquerFait, retirerZone2, trimestresAffiches, dossiersZone2, enregistrerOrdre2, changerPriorite, tousDossiers, ajouterEnFin, dossiersParking, mettreEnParking } from './engine.js?v=56';
 
 const $ = (id) => document.getElementById(id);
 let currentId = null;
@@ -26,7 +26,7 @@ const getSeg = (id) => [...$(id).querySelectorAll('button[aria-pressed=true]')].
 const setSeg = (id, values) => $(id).querySelectorAll('button').forEach((b) =>
   b.setAttribute('aria-pressed', String([].concat(values || []).includes(b.dataset.v))));
 
-seg('pilote', PILOTES.map((p) => ({ v: p.code, label: p.code })));
+seg('pilote', [...PILOTES.map((p) => ({ v: p.code, label: p.code })), { v: '', label: 'À attribuer' }]);   // sans pilote : parking au-dessus de la zone 1
 seg('enjeu', ENJEUX.map((e) => ({ v: e.code, label: e.court, color: e.fill })));
 seg('priorite', PRIORITES.map((p) => ({ v: p, label: p })));
 // Section avant-vente : une ligne par tâche (ressource -> livrable -> priorité -> échéance)
@@ -133,7 +133,7 @@ function majBoutonZ2() {
 function collect() {
   const d = {
     titre: $('titre').value.trim(),
-    pilote: getSeg('pilote')[0],
+    pilote: getSeg('pilote')[0] || '',
     enjeu: getSeg('enjeu')[0] || 'Q',
     priorite: getSeg('priorite')[0] || '—',
     taches: lireTaches(),
@@ -147,7 +147,6 @@ function collect() {
     parkingLe: enParking() ? (parkingLe || new Date().toISOString().slice(0, 10)) : null,
   };
   if (!d.titre) throw new Error('Indique le client et le site.');
-  if (!d.pilote) throw new Error('Choisis le pilote.');
   return d;
 }
 
@@ -181,7 +180,7 @@ async function autoSave() {
   if (enCoursSave) { aRefaire = true; return; }
   let d;
   try { d = collect(); }
-  catch (e) { if (currentId) status(e.message, true); else status('Renseigne le client et le pilote : le dossier sera créé automatiquement.'); return; }
+  catch (e) { if (currentId) status(e.message, true); else status('Renseigne le client : le dossier sera créé automatiquement (sans pilote = « À attribuer »).'); return; }
   enCoursSave = true;
   const nouveau = !currentId;
   status(nouveau ? 'Création du dossier…' : 'Enregistrement…');
