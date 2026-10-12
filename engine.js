@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=56';
+} from './config.js?v=57';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -419,6 +419,11 @@ async function layoutInterne({ pilotes = null } = {}) {
   const f2 = await layoutZone2(snap, f1, vivants, dossiers, H, top1);
   const f3 = await layoutZone3(snap, f2, vivants, dossiers, H, top1);
   try { await layoutZone4(snap, f3, vivants, dossiers, H, top1); } catch (e) { console.warn('Zone 4', e); }
+  // titre écrit DANS chaque cadre (le titre Miro, au-dessus, ne sort pas à l'impression / export PDF)
+  const f4 = findFrame(snap.frames, 'Tableau de chasse');
+  for (const f of [f1, f2, f3, f4].filter(Boolean)) {
+    try { await titreCadre(f, vivants); } catch (e) { console.warn('Titre cadre', e); }
+  }
   try { await layoutAttribuer(f1, vivants, dossiers, top1); } catch (e) { console.warn('À attribuer', e); }
   try { await layoutParking(f2, vivants, dossiers, top1); } catch (e) { console.warn('Parking', e); }
   try { await layoutGarde(snap, f1, vivants, top1, H); } catch (e) { console.warn('Page de garde', e); }
@@ -485,6 +490,19 @@ async function layoutGarde(snap, f1, vivants, top1, H) {
   // le cadre est réduit APRÈS avoir replacé son contenu (Miro refuse un cadre plus petit que ses enfants)
   try { await resizeFrame(f, GW, GH, f.y - f.height / 2, f.x - f.width / 2); await resizeFrame(f, GW, GH, top1, left); }
   catch (e) { console.warn('Cadre page de garde', e); }
+}
+
+// Titre imprimable en haut à gauche du cadre (repris du titre du cadre)
+async function titreCadre(f, vivants) {
+  const txt = (f.title || '').replace(/&amp;/g, '&');
+  const contenu = `<p><strong>${esc(txt)}</strong></p>`;
+  const w = Math.min(1400, f.width - 2 * G.margin);
+  let t = vivants.find((x) => x.meta.role === 'ttl' && x.meta.frame === f.id)?.item;
+  if (!t) t = await creer(f, 'shape', { shape: 'rectangle', content: contenu, width: w, height: 50,
+    style: { fillOpacity: 0, borderOpacity: 0, color: BLEU, fontSize: 30, fontFamily: 'open_sans', textAlign: 'left', textAlignVertical: 'middle' } },
+  { role: 'ttl', frame: f.id });
+  const p = update(t, f, G.margin + w / 2, 46, { width: w, height: 50, content: contenu });
+  if (p) await p;
 }
 
 // ── « À attribuer » (au-dessus de la zone 1, SANS cadre : hors export PDF) ──
@@ -1267,7 +1285,7 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
     reg = { item: await board().getById(it.id) };
   }
   const hFinal = Math.max(H, y + 40);
-  const fin = [update(reg.item, f, W / 2, 40, { content: registre })];   // en haut du cadre, toujours dedans
+  const fin = [update(reg.item, f, W / 2, 14, { content: registre })];   // tout en haut (le titre du cadre est dessous)   // en haut du cadre, toujours dedans
   // anciens objets (cartes de la v22, lignes d'affaires sorties du tableau)
   const perimes = dans.filter((x) => (x.meta.role === 'chasse' || x.meta.role === 'bg4' || x.meta.role === 'hdr4'
     || (x.meta.k4 && !garder.has(x.item.id))));
