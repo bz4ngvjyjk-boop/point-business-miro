@@ -23,7 +23,7 @@ export const ENJEUX = [
 ];
 
 export const PRIORITES = ['P1', 'P2', 'P3', 'Autres', '—'];
-export const RESSOURCES = ['AG', 'OP', 'PS', 'JAB', 'FS'];
+export const RESSOURCES = ['AG', 'OP', 'PS', 'JAB', 'FS', 'JAN'];   // JAN : colonne ajoutée le 19/10
 // Libellés toujours en minuscules, sauf les sigles (GC, CDC, AO)
 export const LIVRABLES = ['plan', 'devis', 'plan + devis', 'esquisse', '3d', 'étude', 'étude énergétique',
   'réponse AO', 'enveloppe', 'CDC', 'GC', 'carsat', 'rdv', 'bercher', 'retrofit', 'plan action', 'relance',
