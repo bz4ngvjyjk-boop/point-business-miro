@@ -45,7 +45,7 @@ export const ZONE1_TITLE = '1 · Avancement avant-vente par pilote';
 export const ZONE2_TITLE = '2 · Gestion des priorités';
 export const COLONNES_PRIO = ['P1', 'P2', 'P3', 'Autres'];
 export const LIBELLE_PRIO = { P1: 'Priorité 1', P2: 'Priorité 2', P3: 'Priorité 3', Autres: 'Autres' };
-export const G2 = { colGap: 30, cardW: 320, cardPad: 12, rowStep: 76, gap: 8, top: 150, titreMax: 31 };   // 31 = une seule ligne sur une carte de 320   // 1 colonne par priorité
+export const G2 = { colGap: 30, cardW: 320, cardPad: 12, rowStep: 76, gap: 8, top: 150, titreMax: 31 };   // 1 colonne par priorité ; titre ≤ 31 = une seule ligne
 export const ZONE3_TITLE = '3 · Charge avant-vente';
 export const HORIZONS = ['Cette semaine', 'Plus tard'];   // zone 3 : cette semaine / tout le reste
 export const LIVRABLES_PLAN = ['plan', 'plan + devis', 'esquisse'];
