@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=63';
+} from './config.js?v=64';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -1054,6 +1054,8 @@ async function layoutZone3(snap, f2, vivants, dossiers, H, top1) {
   const colW = G3.cardW + 2 * G3.cardPad;
   const W = 2 * G.margin + G3.labelW + RESSOURCES.length * (colW + G3.colGap);
   const colX = (j) => G.margin + G3.labelW + G3.colGap + j * (colW + G3.colGap);
+  // colonne ajoutée : le cadre est élargi AVANT le placement (Miro refuse un enfant posé hors du cadre)
+  if (W > f.width) { try { await resizeFrame(f, W, Math.max(H, f.height), top1, f2.x + f2.width / 2 + 200); } catch (e) { console.warn('Élargissement zone 3', e); } }
   const rowH = (H - G3.top - G.margin - (NH - 1) * G3.rowGap) / NH;
   const rowY = (r) => G3.top + r * (rowH + G3.rowGap);
   const capacite = Math.max(1, Math.floor((rowH - 16) / G3.rowStep));
