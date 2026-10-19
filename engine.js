@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=60';
+} from './config.js?v=61';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -1223,6 +1223,7 @@ async function lireJcrm(items) {
   return { data, maj };
 }
 
+const SUIVI_MAX = 170;   // suivi coupé à la largeur de la colonne (sinon Miro rétrécit le texte)
 async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
   const quarts = trimestresAffiches();
   const TW = G4.cols.reduce((a, b) => a + b, 0);
@@ -1269,7 +1270,8 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
     garder.add(it.id);
     const cur = it.style || {};
     const restyle = (cur.fillColor || '').toLowerCase() !== (style.fillColor || '').toLowerCase()
-      || (cur.color || '').toLowerCase() !== (style.color || '').toLowerCase();
+      || (cur.color || '').toLowerCase() !== (style.color || '').toLowerCase()
+      || String(cur.fontSize || '') !== String(style.fontSize || '');            // taille de police imposée (anciennes cases en 14)
     push(update(it, f, rx, ry, { width: w, height: h, content: contenu, ...(restyle ? { style } : {}) }));
   }
   const base = { fontFamily: 'open_sans', textAlignVertical: 'middle', borderOpacity: 0 };
@@ -1314,7 +1316,7 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
       }
       const montant = c.j?.montant != null ? Math.round(c.j.montant).toLocaleString('fr-FR') : '—';
       const cells = [`<p><strong>${esc(m.titre)}</strong></p>`, `<p>${m.pilote}</p>`,
-        sg || perdu ? `<p>${suivi}</p>` : `<p><em>${esc(suivi)}</em></p>`, `<p>${montant}</p>`];
+        sg || perdu ? `<p>${suivi}</p>` : `<p><em>${esc(tronque(suivi, SUIVI_MAX))}</em></p>`, `<p>${montant}</p>`];
       const ry = y + n * G4.ligneH + G4.ligneH / 2;
       // (les cellules ouvrent la fiche du dossier au clic : métadonnée « ref »)
       cells.forEach((html, i) => rowP.push(cellule(`r${c.d.item.id}_${i}`, { role: 'ch4', ref: c.d.item.id },
