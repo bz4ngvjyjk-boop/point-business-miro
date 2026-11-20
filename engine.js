@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=64';
+} from './config.js?v=65';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -698,6 +698,8 @@ async function layoutZone1(f, vivants, dossiers, pilotes) {
     const left0 = x0;
     if (!actif(s.p.code)) { x0 += s.w + G.sectionGap; continue; }
     const bg = dans.find((x) => x.meta.role === 'bg' && x.meta.pilote === s.p.code);
+    // le fond de colonne reste toujours derrière les pastilles (sinon une pastille passée sous le fond laisse un « trou »)
+    if (bg && actif(s.p.code)) await board().sendToBack(bg.item).catch(() => {});
     const hdr = dans.find((x) => x.meta.role === 'hdr' && x.meta.pilote === s.p.code);
     if (bg) push(update(bg.item, f, left0 + s.w / 2, G.top - G.hdrH + secH / 2, { width: s.w, height: secH }));
     if (hdr) {
