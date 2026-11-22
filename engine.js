@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=66';
+} from './config.js?v=67';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -425,13 +425,16 @@ async function appliquerAjout(snap, f1) {
   return n;
 }
 
-// Registre lisible de l'extérieur (texte blanc, bas de la zone 1) : « id pastille = n° jCRM » pour chaque dossier,
+// Registre lisible de l'extérieur (texte blanc, bas de la zone 4) : « id pastille = n° jCRM » pour chaque dossier,
 // par blocs de 120 — sert aux contrôles (doublons de n°, n° manquants) faits par script, sans accès aux métadonnées.
 async function ecrireRegistre(f1, vivants, dossiers) {
   const lignes = dossiers.map((d) => `${d.item.id}=${d.meta.jcrm || ''}`);
   const blocs = [];
   for (let i = 0; i < lignes.length; i += 120) blocs.push(lignes.slice(i, i + 120).join(';'));
-  const exist = vivants.filter((x) => x.meta.role === 'reg1');
+  let exist = vivants.filter((x) => x.meta.role === 'reg1');
+  const ailleurs = exist.filter((x) => x.item.parentId !== f1.id);           // anciens registres (sous la zone 1) : supprimés
+  await Promise.all(ailleurs.map((x) => remove(x.item)));
+  exist = exist.filter((x) => !ailleurs.includes(x));
   for (const [k, b] of blocs.entries()) {
     const contenuReg = `<p>PBH-REG ${k + 1}/${blocs.length} : ${b}</p>`;
     let t = exist.find((x) => x.meta.k === k)?.item;
@@ -441,10 +444,29 @@ async function ecrireRegistre(f1, vivants, dossiers) {
       await addToFrame(f1, t);
       t = await board().getById(t.id);
     }
-    const p = update(t, f1, f1.width / 2, f1.height - 12 - k * 4, { content: contenuReg });
+    const p = update(t, f1, f1.width / 2, f1.height - 260 + k * 70, { content: contenuReg });
     if (p) await p;
   }
   await Promise.all(exist.filter((x) => x.meta.k >= blocs.length).map((x) => remove(x.item)));
+}
+
+// N° d'opportunité par pastille (corrections) : texte « PBH-OPPID: {"idPastille": n°} » — remplace le n° existant.
+async function appliquerOppId(snap) {
+  const t = snap.items.find((x) => x.item.type === 'text' && (x.item.content || '').includes('PBH-OPPID'));
+  if (!t) return 0;
+  let table;
+  try { table = JSON.parse(decodeHtml(t.item.content.replace(/<[^>]+>/g, '')).split('PBH-OPPID:')[1].trim()); }
+  catch (e) { console.warn('PBH-OPPID illisible', e); return 0; }
+  let n = 0;
+  for (const [id, j] of Object.entries(table)) {
+    const d = snap.items.find((x) => x.item.id === id && x.meta?.role === 'dossier');
+    if (!d) { console.warn('PBH-OPPID : pastille introuvable', id); continue; }
+    await setMeta(d.item, { ...d.meta, jcrm: Number(j) || null });
+    n++;
+  }
+  await board().remove(t.item).catch(() => {});
+  console.log(`PBH-OPPID : ${n} n° d'opportunité posés`);
+  return n;
 }
 
 // Reprise des n° d'opportunité : texte « PBH-OPP: {"titre": id, ...} » déposé par script.
@@ -484,6 +506,7 @@ async function layoutInterne({ pilotes = null } = {}) {
   try { if (await appliquerReprise(snap)) snap = await snapshot(); } catch (e) { console.warn('Reprise', e); }
   try { if (await appliquerOpp(snap)) snap = await snapshot(); } catch (e) { console.warn('PBH-OPP', e); }
   try { if (await appliquerFusion(snap)) snap = await snapshot(); } catch (e) { console.warn('PBH-FUSION', e); }
+  try { if (await appliquerOppId(snap)) snap = await snapshot(); } catch (e) { console.warn('PBH-OPPID', e); }
   try { if (await appliquerAjout(snap, f1)) snap = await snapshot(); } catch (e) { console.warn('PBH-AJOUT', e); }
   let mobiles = 0;
   const BOITE_MOBILE_ACTIVE = false;   // saisie mobile abandonnée (décision 11/10) : code conservé, désactivé
@@ -515,7 +538,7 @@ async function layoutInterne({ pilotes = null } = {}) {
   try { await layoutAttribuer(f1, vivants, dossiers, top1, hBandeaux); } catch (e) { console.warn('À attribuer', e); }
   try { await layoutParking(f2, vivants, dossiers, top1, hBandeaux); } catch (e) { console.warn('Parking', e); }
   try { await layoutGarde(snap, f1, vivants, top1, H); } catch (e) { console.warn('Page de garde', e); }
-  try { await ecrireRegistre(f1, vivants, dossiers); } catch (e) { console.warn('Registre', e); }
+  try { const f4r = findFrame(snap.frames, 'Tableau de chasse'); if (f4r) await ecrireRegistre(f4r, vivants, dossiers); } catch (e) { console.warn('Registre', e); }
   return { dossiers: dossiers.length, nettoyes: orphelins.length, mobiles, ms: Math.round(performance.now() - t0) };
 }
 
