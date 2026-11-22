@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=67';
+} from './config.js?v=68';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -461,7 +461,10 @@ async function appliquerOppId(snap) {
   for (const [id, j] of Object.entries(table)) {
     const d = snap.items.find((x) => x.item.id === id && x.meta?.role === 'dossier');
     if (!d) { console.warn('PBH-OPPID : pastille introuvable', id); continue; }
-    await setMeta(d.item, { ...d.meta, jcrm: Number(j) || null });
+    const v = typeof j === 'object' && j ? j : { j };            // { j: n°, t: nouveau titre } possible
+    const m = { ...d.meta, jcrm: Number(v.j) || null, maj: new Date().toISOString() };
+    if (v.t) { m.titre = v.t; d.item.content = contenu(m); await d.item.sync().catch(() => {}); }
+    await setMeta(d.item, m);
     n++;
   }
   await board().remove(t.item).catch(() => {});
