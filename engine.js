@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=65';
+} from './config.js?v=66';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -402,6 +402,51 @@ async function appliquerFusion(snap) {
   return n;
 }
 
+// Ajout ponctuel de dossiers (depuis jCRM, par script) : texte « PBH-AJOUT: [{"t": titre, "p": pilote, "e": enjeu, "j": n° jCRM}] ».
+// Jamais de doublon : un dossier déjà présent (même nom ou même n° d'opportunité) n'est pas recréé.
+async function appliquerAjout(snap, f1) {
+  const t = snap.items.find((x) => x.item.type === 'text' && (x.item.content || '').includes('PBH-AJOUT'));
+  if (!t) return 0;
+  let liste;
+  try { liste = JSON.parse(decodeHtml(t.item.content.replace(/<[^>]+>/g, '')).split('PBH-AJOUT:')[1].trim()); }
+  catch (e) { console.warn('PBH-AJOUT illisible', e); return 0; }
+  const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const doss = snap.items.filter((x) => x.meta?.role === 'dossier');
+  let n = 0;
+  for (const e of liste) {
+    if (doss.some((x) => norm(x.meta.titre) === norm(e.t) || (e.j && Number(x.meta.jcrm) === Number(e.j)))) continue;
+    const d = { titre: e.t, pilote: e.p || '', enjeu: e.e || 'Q', priorite: '—', taches: [], jcrm: e.j || null, carsat: false };
+    await creer(f1, 'shape', { shape: 'rectangle', content: contenu(d), width: G.cardW, height: G.cardH, style: cardStyle(d) },
+      { role: 'dossier', ...d, maj: new Date().toISOString() });
+    n++;
+  }
+  await board().remove(t.item).catch(() => {});
+  console.log(`PBH-AJOUT : ${n} dossier(s) ajouté(s)`);
+  return n;
+}
+
+// Registre lisible de l'extérieur (texte blanc, bas de la zone 1) : « id pastille = n° jCRM » pour chaque dossier,
+// par blocs de 120 — sert aux contrôles (doublons de n°, n° manquants) faits par script, sans accès aux métadonnées.
+async function ecrireRegistre(f1, vivants, dossiers) {
+  const lignes = dossiers.map((d) => `${d.item.id}=${d.meta.jcrm || ''}`);
+  const blocs = [];
+  for (let i = 0; i < lignes.length; i += 120) blocs.push(lignes.slice(i, i + 120).join(';'));
+  const exist = vivants.filter((x) => x.meta.role === 'reg1');
+  for (const [k, b] of blocs.entries()) {
+    const contenuReg = `<p>PBH-REG ${k + 1}/${blocs.length} : ${b}</p>`;
+    let t = exist.find((x) => x.meta.k === k)?.item;
+    if (!t) {
+      t = await board().createText({ content: contenuReg, x: f1.x, y: f1.y, width: f1.width - 2 * G.margin, style: { fontSize: 10, color: '#ffffff' } });
+      await setMeta(t, { role: 'reg1', k });
+      await addToFrame(f1, t);
+      t = await board().getById(t.id);
+    }
+    const p = update(t, f1, f1.width / 2, f1.height - 12 - k * 4, { content: contenuReg });
+    if (p) await p;
+  }
+  await Promise.all(exist.filter((x) => x.meta.k >= blocs.length).map((x) => remove(x.item)));
+}
+
 // Reprise des n° d'opportunité : texte « PBH-OPP: {"titre": id, ...} » déposé par script.
 // Ne complète que les fiches sans n° (jamais d'écrasement), puis le texte est supprimé.
 async function appliquerOpp(snap) {
@@ -439,6 +484,7 @@ async function layoutInterne({ pilotes = null } = {}) {
   try { if (await appliquerReprise(snap)) snap = await snapshot(); } catch (e) { console.warn('Reprise', e); }
   try { if (await appliquerOpp(snap)) snap = await snapshot(); } catch (e) { console.warn('PBH-OPP', e); }
   try { if (await appliquerFusion(snap)) snap = await snapshot(); } catch (e) { console.warn('PBH-FUSION', e); }
+  try { if (await appliquerAjout(snap, f1)) snap = await snapshot(); } catch (e) { console.warn('PBH-AJOUT', e); }
   let mobiles = 0;
   const BOITE_MOBILE_ACTIVE = false;   // saisie mobile abandonnée (décision 11/10) : code conservé, désactivé
   if (BOITE_MOBILE_ACTIVE && !pilotes) {
@@ -469,6 +515,7 @@ async function layoutInterne({ pilotes = null } = {}) {
   try { await layoutAttribuer(f1, vivants, dossiers, top1, hBandeaux); } catch (e) { console.warn('À attribuer', e); }
   try { await layoutParking(f2, vivants, dossiers, top1, hBandeaux); } catch (e) { console.warn('Parking', e); }
   try { await layoutGarde(snap, f1, vivants, top1, H); } catch (e) { console.warn('Page de garde', e); }
+  try { await ecrireRegistre(f1, vivants, dossiers); } catch (e) { console.warn('Registre', e); }
   return { dossiers: dossiers.length, nettoyes: orphelins.length, mobiles, ms: Math.round(performance.now() - t0) };
 }
 
