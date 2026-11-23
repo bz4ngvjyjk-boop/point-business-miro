@@ -8,7 +8,7 @@ import {
   PILOTES, ENJEUX, CARSAT, BLEU, OR, GRIS_FOND, G, G2, G3, ZONE1_TITLE, ZONE2_TITLE, ZONE3_TITLE,
   COLONNES_PRIO, LIBELLE_PRIO, RESSOURCES, HORIZONS, LIVRABLES_PLAN, LIVRABLES_DEVIS, META,
   ZONE4_TITLE, G4, OBJECTIF_TRIM,
-} from './config.js?v=68';
+} from './config.js?v=69';
 
 const board = () => miro.board;
 const enjeu = (code) => ENJEUX.find((e) => e.code === code) || ENJEUX[4];
@@ -1288,8 +1288,17 @@ async function lireJcrm(items) {
     brut = t.item.content.replace(/<[^>]+>/g, ' ');
     try { await board().setAppData('jcrm', brut); await remove(t.item); } catch (e) { console.warn('PBH-JCRM', e); }
   } else brut = await board().getAppData('jcrm').catch(() => null);
-  if (!brut) return { data: new Map(), maj: null };
+  if (!brut) return { data: new Map(), maj: null, hors: [] };
   const maj = (/maj (\d{2}\/\d{2} \d{2}:\d{2})/.exec(brut) || [])[1] || null;
+  // signatures du trimestre hors tableau de chasse : « PBH-HORS : id:montant:date:pilote:nom;… »
+  const hors = [];
+  const partHors = brut.split('PBH-HORS')[1] || '';
+  brut = brut.split('PBH-HORS')[0];
+  for (const m of partHors.matchAll(/(\d+):([\d.]+):(\d{4}-\d{2}-\d{2}):([A-Z]*):([^;\s<]*)/g)) {
+    let nom = m[5];
+    try { nom = decodeURIComponent(m[5]); } catch (e) { /* nom illisible */ }
+    hors.push({ id: m[1], montant: Number(m[2]), signeLe: m[3], pilote: m[4], nom });
+  }
   const data = new Map();
   for (const m of brut.matchAll(/(\d+):([\d.]*):([A-Z?]):(\d{4}-\d{2}-\d{2})?(?::(\d{4}-\d{2})?)?(?::(\d{4}-\d{2}-\d{2})?:([^;\s<]*))?/g)) {
     let texte = null;
@@ -1297,7 +1306,7 @@ async function lireJcrm(items) {
     data.set(m[1], { montant: m[2] === '' ? null : Number(m[2]), statut: m[3], signeLe: m[4] || null, chantier: m[5] || null,
       action: m[6] && texte ? { date: m[6], texte } : null });
   }
-  return { data, maj };
+  return { data, maj, hors };
 }
 
 const SUIVI_MAX = 170;   // suivi coupé à la largeur de la colonne (sinon Miro rétrécit le texte)
@@ -1311,7 +1320,7 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
       x: f3.x + f3.width / 2 + 200 + W / 2, y: top1 + H / 2 });
   }
   const dans = vivants.filter((x) => inFrame(f, x.item));
-  const { data: jcrm, maj } = await lireJcrm(snap.items.filter((x) => inFrame(f, x.item)));
+  const { data: jcrm, maj, hors } = await lireJcrm(snap.items.filter((x) => inFrame(f, x.item)));
 
   // dossiers du tableau, par trimestre visé (un trimestre passé glisse dans le trimestre en cours)
   const blocs = quarts.map(() => []);
@@ -1325,6 +1334,17 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
     } else if (k < 0 && rangTrim(d.meta.chasseTrim) < rangTrim(quarts[0])) { k = 0; glisse = d.meta.chasseTrim; }
     if (k < 0) continue;
     blocs[k].push({ d, glisse, j: d.meta.jcrm ? jcrm.get(String(d.meta.jcrm)) : null });
+  }
+  // signatures du trimestre non ciblées : ajoutées au bloc de leur trimestre, mention « hors chasse »
+  const dejaVus = new Set(blocs.flat().map((c) => String(c.d.meta.jcrm || '')));
+  for (const h of hors) {
+    if (dejaVus.has(h.id)) continue;
+    const k = quarts.indexOf(trimestreDe(new Date(h.signeLe)));
+    if (k < 0) continue;
+    const reel = dossiers.find((x) => String(x.meta.jcrm || '') === h.id);
+    const d = reel || { item: { id: `h${h.id}` }, meta: { titre: h.nom, pilote: h.pilote, jcrm: h.id } };
+    blocs[k].push({ d, hors: true, sansFiche: !reel, j: { montant: h.montant, statut: 'G', signeLe: h.signeLe } });
+    dejaVus.add(h.id);
   }
   blocs.forEach((b) => b.sort((a, c) => (c.j?.montant || 0) - (a.j?.montant || 0)));
 
@@ -1384,7 +1404,7 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
       const fond = n % 2 ? '#f6f8fb' : '#ffffff';
       const coul = sg ? '#1e8e4e' : perdu ? '#c8341f' : '#1a1a1a';
       let suivi;
-      if (sg) suivi = `Signé le ${jourLong(c.j.signeLe)}`;
+      if (sg) suivi = `Signé le ${jourLong(c.j.signeLe)}${c.hors ? ' · hors chasse' : ''}`;
       else if (perdu) suivi = 'Perdu';
       else {
         const morceaux = [suiviCourant(m.suivi, c.j?.action), c.j?.chantier ? `chantier ${moisLong(c.j.chantier)}` : null,
@@ -1396,7 +1416,7 @@ async function layoutZone4(snap, f3, vivants, dossiers, H, top1) {
         sg || perdu ? `<p>${suivi}</p>` : `<p><em>${esc(tronque(suivi, SUIVI_MAX))}</em></p>`, `<p>${montant}</p>`];
       const ry = y + n * G4.ligneH + G4.ligneH / 2;
       // (les cellules ouvrent la fiche du dossier au clic : métadonnée « ref »)
-      cells.forEach((html, i) => rowP.push(cellule(`r${c.d.item.id}_${i}`, { role: 'ch4', ref: c.d.item.id },
+      cells.forEach((html, i) => rowP.push(cellule(`r${c.d.item.id}_${i}`, c.sansFiche ? { role: 'ch4' } : { role: 'ch4', ref: c.d.item.id },
         xCol(i) + G4.cols[i] / 2, ry, G4.cols[i], G4.ligneH, html,
         { ...base, fillColor: fond, color: i === 2 && !sg && !perdu ? '#6b6f76' : coul, fontSize: 11,
           textAlign: i === 3 ? 'right' : i === 1 ? 'center' : 'left' })));
